@@ -1,5 +1,7 @@
 var blessed = require('blessed');
 
+// Formatting tags for channel names, 
+// other peoples' names, and your own name. 
 var chanTag = '{red-fg}{bold}';
 var chanTagEnd = '{/red-fg}{/bold}';
 
@@ -124,6 +126,8 @@ var tabMan = function tabMan(initTab, chanLabel, tabBar, screen) {
 	this.updateBar();
 };
 
+// Switch to the numbered tab
+// TODO: actually validate the number
 tabMan.prototype.switchToNum = function(n) {
 	this.tabs[this.activeIndex].makeInactive();
 	this.activeIndex = n;
@@ -133,12 +137,13 @@ tabMan.prototype.switchToNum = function(n) {
 	this.updateBar();
 };
 
+// Update the 'send a message to <channel>' label
 tabMan.prototype.updateChanLabel = function() {
 	this.chanLabel.content = 'Send a message to ' + this.activeTab.channel + ':';
 	this.screen.render();
 }
 	
-
+// Switch to next tab
 tabMan.prototype.next = function() {
 	var n = this.activeIndex + 1;
 	if (n == this.numTabs) {
@@ -146,6 +151,7 @@ tabMan.prototype.next = function() {
 	}
 	this.switchToNum(n);
 }
+//Switch to prev tab
 tabMan.prototype.prev = function() {
 	var n = this.activeIndex - 1;
 	if (n == -1) {
@@ -153,11 +159,15 @@ tabMan.prototype.prev = function() {
 	};
 	this.switchToNum(n);
 };
+
+// Push a new tab to the end of the list
 tabMan.prototype.addTab = function(tab) {
 	this.tabs.push(tab);
 	this.numTabs += 1;
 	this.updateBar();
 };
+
+// Get the tab for a named channel
 tabMan.prototype.getChanTab = function(chan) {
 	for (i = 0; i < this.numTabs; i++) {
 		if (this.tabs[i].channel == chan) {
@@ -167,15 +177,26 @@ tabMan.prototype.getChanTab = function(chan) {
 	return null;
 };
 
+// Update the tab bar. 
+// This should be called whenever something that would 
+// change the tab bar happens. 
 tabMan.prototype.updateBar = function() {
-	barText = ' ';
+	// Make a visual tab for each logical tab
 	for (i = 0; i < this.numTabs; i++) {
 		var tab = this.tabs[i];
+		// We're using the title rather than the channel name
+		// which is going to be the same except for System
 		var chan = tab.title;
 		var isActive = tab.isActive;
 		var unread = tab.numUnread;
 		var hasUnread = (unread > 0); 
-		//barText += ' ';
+		// There are three ways a tab can be formatted:
+		// Inactive, no unread (white on black)
+		// Inactive, unread (red on black)
+		// Active, no unread (black on white)
+		// Active, unread (undecided). Only happens when you scroll up and
+		//		more message arrive in the meantime, but this is not implemented yet. 
+
 		if (isActive) {
 			barText += '{black-fg}{white-bg} ' + chan +  ' (' + unread + ') {/black-fg}{/white-bg}';
 		} else {
@@ -186,11 +207,10 @@ tabMan.prototype.updateBar = function() {
 				barText += ' ' + chan +  ' (' + unread + ') ';
 			};
 		};
-		//barText += '{white-fg}{black-bg}';
 	};
 
+	// Push our new tab bar content
 	this.tabBar.setContent(barText);
-	//setDebugInfo(barText);
 	this.screen.render();
 };
 
