@@ -1,5 +1,6 @@
 == Configuration ==
 
+touch sentry (create a blank file called sentry)
 Rename config.js.example to config.js. 
 Configure your chat channels and other options in config.js. 
 Rename steamcreds.js.example to steamcreds.js. 
@@ -24,5 +25,6 @@ Something about a module not self-registering: you have node >=0.12. See the req
 Some crypto function not found: you have node-steam > 0.6.7. 
 Login failures: Keep trying the instructions above. Also keep in mind you can't have real dota open at the same time. 
 I can't scroll with the mouse: Your terminal program might not have mouse support. If the scroll wheel works in vim but not here, then file a bug. 
+No such file or directory 'sentry': touch sentry
 Other stuff: File a bug. 
 
