@@ -131,7 +131,7 @@ var textEntryBox = blessed.Textbox({
 	left: 2,
 	width: '100%',
 	height: 1,
-	keys: true,
+	//keys: true,
 	/*border: {
 		fg: 'blue',
 	},*/
@@ -228,13 +228,6 @@ textEntryBox.on('submit', function(data) {
 
 */
 
-// Mouse wheel stuff
-// OS X's default terminal apparently uses ^[OA and ^[OB instead, need
-// to implemeent those. 
-screen.enableMouse();
-screen.on('wheeldown', function(){ mainTabBar.activeTab.scrollBy(1); });
-screen.on('wheelup', function(){ mainTabBar.activeTab.scrollBy(-1); });
-
 // Write stuff specifically to the current tab
 // Useful for commands to write responses using this so the user
 // doesn't have to switch to the system tab to see the response
@@ -260,6 +253,7 @@ var writeSystemMsg = function writeServerMsg(text) {
 var printHelpMessage = function printHelpMessage() {
 	helpText = 'Controls: Ctrl-P/N: Previous/Next tab; Enter: Send message; Ctrl-C: Quit\n';
 	helpText+= 'Unicode names may show up as question marks. In-game emotes are PUA Unicode characters in the E0xx range\n';
+	helpText+= 'Scrolling the chat may be done with the mousewheel if your terminal supports it, or ^Y/^E.\n';
 	mainTabBar.activeTab.append(helpText);
 };
 
@@ -282,6 +276,16 @@ var processCmd = function processCmd(fullCmd) {
 var echoCmd = function echoCmd(fullCmd, argv) {
 	writeCurrentTab(fullCmd);
 };
+
+// Join a channel on the fly
+// Does not permanently join the channel
+var joinCmd = function joinCmd(fullCmd, argv) {
+	// Channel name might have spaces and stuff, so just
+	// strip off the 'join ' part of the command to  get
+	// the channel name. 
+	var chanName = fullCmd.slice(5);
+	joinChannel(chanName);
+};
 	
 // Mapping for commands. 
 // Commands here MUST be defined before being put in here. 
@@ -289,7 +293,8 @@ var echoCmd = function echoCmd(fullCmd, argv) {
 // The keys are what the user would type to call the command, 
 // the values are the function that gets called to service the command. 
 var cmdMap = {
-	echo: echoCmd
+	echo: echoCmd,
+	join: joinCmd,
 };
 
 // Controls
@@ -305,6 +310,31 @@ textEntryBox.key(['C-p'], function(ch, key) { mainTabBar.prev() });
 
 // Help
 textEntryBox.key(['C-x'], function(ch, key) { printHelpMessage() });
+
+// Scrolling
+// OS X's default terminal apparently uses ^[OA and ^[OB instead, need
+// to implemeent those. 
+screen.enableMouse();
+screen.on('wheelup', function(){ mainTabBar.activeTab.scrollBy(-1); });
+screen.on('wheeldown', function(){ mainTabBar.activeTab.scrollBy(1); });
+// This *might* work for OS X Terminal.app, untested
+textEntryBox.key(['^[OA'], function(ch, key) { mainTabBar.activeTab.scrollBy(-1); });
+textEntryBox.key(['^[OB'], function(ch, key) { mainTabBar.activeTab.scrollBy(1); });
+
+textEntryBox.key(['C-y'], function(ch, key) { mainTabBar.activeTab.scrollBy(-1); });
+textEntryBox.key(['C-e'], function(ch, key) { mainTabBar.activeTab.scrollBy(1); });
+
+screen.on('resize', onScreenResize);
+
+var onScreenResize = function onScreenResize() {
+	// Update tab bar
+	mainTabBar.updateBar();
+	// Scroll tabs back to the bottom if they were 
+	// previously bottomed out. 
+	for (i = 0; i < mainTabBar.numTabs; i++) {
+		mainTabBar.tabs[i].checkScroll();
+	};
+};
 
 // Steam login stuff
 // Login, only passing authCode if it exists

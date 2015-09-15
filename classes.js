@@ -80,13 +80,17 @@ chatTab.prototype.scrollBy = function(n) {
 chatTab.prototype.updateContent = function() {
 	this.tab.content = this.chatBoxContent;
 };
+// Scroll back to the bottom if necessary
+chatTab.prototype.checkScroll = function() {
+	if (this.bottomScroll) {
+		this.tab.setScrollPerc(100);
+	};
+};
 // Add a line
 chatTab.prototype.append = function(text) {
 	this.chatBoxContent = this.chatBoxContent + text;
 	this.updateContent();
-	if (this.bottomScroll) {
-		this.tab.setScrollPerc(100);
-	}
+	this.checkScroll();
 	if (!this.isActive) {
 		this.numUnread++;
 	};
@@ -108,7 +112,6 @@ chatTab.prototype.addMsg = function(name, message, own) {
 	fullText = chanPart + namePart + msgPart + '\n';
 	this.append(fullText);
 };
-		
 
 // Tab manager class
 // Handles keeping track of tabs, switching between them, 
@@ -182,6 +185,7 @@ tabMan.prototype.getChanTab = function(chan) {
 // change the tab bar happens. 
 tabMan.prototype.updateBar = function() {
 	// Make a visual tab for each logical tab
+	var barText = '';
 	for (i = 0; i < this.numTabs; i++) {
 		var tab = this.tabs[i];
 		// We're using the title rather than the channel name
