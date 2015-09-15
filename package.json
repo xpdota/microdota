@@ -1,0 +1,23 @@
+{
+	"name": "dchat",
+	"version": "0.0.1",
+	"dependencies": {
+		"protobuf": "*",
+		"deferred": "*",
+		"bignumber.js": "2.0.5",
+		"merge": ">= 0.0.2",
+		"dota2": "*",
+		"blessed": "*"
+	},
+	"peerDependencies": {
+		"steam": "0.6.7"
+	},
+	"readmeFilename": "README",
+	"description": "A lightweight dota 2 chat client",
+	"main": "chat.js",
+	"keywords": [
+		"steam",
+		"valve",
+		"dota"
+	]
+}

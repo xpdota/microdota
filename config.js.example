@@ -1,0 +1,6 @@
+var config = {};
+config.channels = ['/vg/', 'chat-test'];
+config.defaultChan = 1;
+config.cmdLeader = '/';
+
+module.exports = config;
