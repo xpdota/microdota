@@ -1,5 +1,5 @@
 var config = {};
-config.channels = ['/vg/', 'chat-test'];
+config.channels = ['chat-test'];
 config.defaultChan = 1;
 config.cmdLeader = '/';
 
