@@ -1,3 +1,15 @@
+// BIG TODO:
+// Turn entries (whether chat messages, list objects, whatever) into
+// objects that stringify themselves and keep track of their own 
+// selected/deselected state. 
+
+
+// TODO: add trimming support for when a chat log gets absolutely huge
+// (cut off the beginning of it). No need to handle scroll positions since 
+// it would be better to not trim any windows where the user is scrolled up
+// since they might be reading the stuff we want to trim. 
+
+
 var blessed = require('blessed');
 
 // Formatting tags for channel names, 
@@ -254,6 +266,7 @@ tabMan.prototype.updateBar = function() {
 	this.screen.render();
 };
 
+// Class for the friends list tab. 
 var friendsTab = function friendsTab(screen, flData) {
 	this.screen = screen;
 	this.channel = '<friends>';
@@ -269,8 +282,8 @@ var friendsTab = function friendsTab(screen, flData) {
 		visible: false,
 	});
 	this.flData = flData;
-	// This will be commented out for now to make sure they
-	// don't have any effect (they shouldn't)
+	// This will be commented out for now to make sure it
+	// doesn't have any affect (it shouldn't). 
 	//this.bottomScroll = true;
 	this.numUnread = -1;
 	this.msgBelow = false;
@@ -294,6 +307,11 @@ friendsTab.prototype.makeInactive = function() {
 	this.screen.render();
 };
 
+// Currently, we're using scrolling here to mean "inc/dec selection", 
+// not actually scroll the viewport. I'll have to figure out what we're doing
+// here. I'll probably adapt a scrolloff-like approach, where the viewport 
+// follows the selection, with a buffer of a few lines above and below it 
+// if possible. 
 friendsTab.prototype.scrollBy = function(n) {
 	this.activeLine += n;
 	if (this.activeLine < 0) this.activeLine = 0;
@@ -303,13 +321,22 @@ friendsTab.prototype.scrollBy = function(n) {
 
 friendsTab.prototype.updateContent = function() {
 	// not done
-	// this will be where the friends list data actually
+	// This will be where the friends list data actually
 	// gets processed into something meaningful
 	//this.tab.content = 'Default friends list content';
+	// TODO: put it in a meaningful order (e.g. in dota first, then online)
+	// TODO: turn entries here into real objects so that it's easier to 
+	// actually do stuff with the selection. 
 	var content = '';
+	// lineNum keeps track of the current line so we can highlight
+	// the active line. 
 	var lineNum = 0;
-	setDebugInfo(this.activeLine);
+	// Active line is the one to highlight. 
 	var activeLine = this.activeLine;
+	// Function to add a line, highlight it if it's the active line, and 
+	// incremenet lineNum. 
+	// The final value of lineNum is used to set this.numLines which
+	// is used to restrict selection to valid lines. 
 	var addLine = function(line) {
 		if (lineNum == activeLine) {
 			content += '{blue-bg}' + line + '{/blue-bg}\n';
@@ -318,47 +345,38 @@ friendsTab.prototype.updateContent = function() {
 		};
 		lineNum++;
 	};
-			
+	// Initial line
+	// Might add more things, like an "add friends"
 	addLine('Your friends: ');
 	for (id in this.flData) {
 		var line = '';
-		//line += id;
 		var friendObj = this.flData[id];
 		var gameName = friendObj.gameName;
 		var name = friendObj.playerName;
 		line += name + ' playing ' + gameName;
-			//line += id + ' (Error determining status)';
+		// If the friend is not also in the list of known users, then
+		// both their name and other info will be undefined, but 
+		// somehow this doesn't result in a fatal error. Gotta love JS.  
+		// TODO: somehow look up data for unknown users. 
 		addLine(line);
 	};
+	// Use final value of lineNum as the number of lines in the list. 
 	this.numLines = lineNum;
+	// Update actual text box content and update the screen. 
 	this.tab.content = content;
 	this.screen.render();
 };
-/*friendsTab.prototype.updateTabContent = function() {
-	this.updateContent();
-};*/
+
 friendsTab.prototype.append = function() {
 	// this needs to do nothing, not sure if there's a better
 	// way of handling this. We don't want the user to lose
 	// messages but this isn't a typical log-style tab. 
+	// TODO: just have this (and below) redirect to the equivalent
+	// functions on the system tab. 
 };
 friendsTab.prototype.addMsg = function() {
 	// Same thing here
 };
-// We'll just share the flData variable, no need for this stuff
-/*
-friendsTab.setFlFull = function(data) {
-	// Set the friends list data from scratch. 
-	// This will probably happen once when logging in but
-	// nowhere else. 
-	this.flData = data;
-};
-friendsTab.setFlPart = function(data) {
-	// Modify the friends list using the data we get
-	// in a steam friends event
-	// TODO
-};*/
-
 
 module.exports = {
 	chatTab: chatTab,
