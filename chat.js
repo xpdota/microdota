@@ -49,6 +49,7 @@ dota.debug = false;
 var onSteamLogOn = function onSteamLogOn(){
 	// Set display name
 	sc.setPersonaName(steamcreds.steam_name);
+	sc.setPersonaState(steam.EPersonaState.Online);
 	writeSystemMsg('Logged on to Steam');
 	// Start node-dota2
 	dota.launch();
