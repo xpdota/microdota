@@ -224,6 +224,73 @@ tabMan.prototype.updateBar = function() {
 	this.screen.render();
 };
 
+var friendsTab = function friendsTab(screen) {
+	this.screen = screen;
+	this.channel = '<friends>';
+	this.title = Friends;
+	this.tab = blessed.text({
+		top: 2,
+		left: 0,
+		width: '100%',
+		height: '100%-6',
+		tags: true,
+		scrollable: true,
+		alwaysScroll: true,
+		visible: false,
+	});
+	flData: {};
+	// This will be commented out for now to make sure they
+	// don't have any effect (they shouldn't)
+	//this.bottomScroll = true;
+	this.numUnread = -1;
+	this.msgBelow = false;
+	this.tab.hide();
+	this.active = false;
+	
+	this.screen.render();
+
+};
+friendsTab.prototype.makeActive = function() {
+	this.isActive = true;
+	this.tab.show();
+	this.screen.render();
+};
+friendsTab.prototype.makeInactive = function() {
+	this.isActive = false;
+	this.tab.hide();
+	this.screen.render();
+};
+
+friendsTab.prototype.scrollBy = function(n) {
+	this.tab.scroll(n);
+	this.screen.render();
+};
+
+friendsTab.prototype.updateContent = function() {
+	// not done
+	// this will be where the friends list data actually
+	// gets processed into something meaningful
+};
+
+friendsTab.prototype.append = function() {
+	// this needs to do nothing, not sure if there's a better
+	// way of handling this. We don't want the user to lose
+	// messages but this isn't a typical log-style tab. 
+};
+
+friendsTab.setFlFull = function(data) {
+	// Set the friends list data from scratch. 
+	// This will probably happen once when logging in but
+	// nowhere else. 
+	this.flData = data;
+};
+friendsTab.setFlPart = function(data) {
+	// Modify the friends list using the data we get
+	// in a steam friends event
+	// TODO
+};
+
+
 module.exports = {
 	chatTab: chatTab,
 	tabMan: tabMan,
