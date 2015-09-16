@@ -31,15 +31,22 @@ var defaultTab = config.defaultChan;
 var ownName = steamcreds.steam_name;
 var cmdLeader = config.cmdLeader;
 
+
 // These can be used by whatever to see if 
 // the process of logging on and joining channels is done. 
 var dotaIsReady = false;
 var joinedChannels = false;
 
+// Steam friends and players stuff
+var steamFriends = {};
+var steamUsers = {};
+var flData = {};
+
 // Load our own classes from classes.js
 var classes = require('./classes');
 var chatTab = classes.chatTab;
 var tabMan = classes.tabMan;
+var friendsTabClass = classes.friendsTab;
 			
 // Disable debugging output from these modules
 sc.debug = false;
@@ -216,7 +223,9 @@ textEntryBox.on('submit', function(data) {
 		var cmd = data.slice(l);
 		processCmd(cmd);
 	} else {
-		if (channel == '<system>') {
+		// TODO: make a more object-oriented way of determining which tabs can actually
+		// take a message
+		if (channel == '<system>' || channel == '<friends>') {
 			// Putting a non-command message in the system window is nonsensical
 			writeSystemMsg('You can\'t send messages here. Switch to a channel.');
 		} else {
@@ -235,6 +244,18 @@ textEntryBox.on('submit', function(data) {
 	textEntryBox.focus();
 	screen.render();
 });
+
+// ^U functionality
+var clearTextBox = function clearTextBox() {
+	textEntryBox.clearValue();
+	textEntryBox.focus();
+	screen.render();
+};
+
+// (Future) function for pressing ^W
+var deleteWordTextBox = function deleteWordTextBox() {
+	
+};
 
 /* TODO: 
 	^U, ^K
@@ -266,6 +287,7 @@ global.setDebugInfo = setDebugInfo;
 // Put a message on the system tab, tab it with <system>
 var writeSystemMsg = function writeServerMsg(text) {
 	sysTab.append('<system> ' + text + '\n');
+	mainTabBar.updateBar();
 };
 
 // Ctrl-X help message
@@ -330,6 +352,12 @@ textEntryBox.key(['C-p'], function(ch, key) { mainTabBar.prev() });
 // Help
 textEntryBox.key(['C-x'], function(ch, key) { printHelpMessage() });
 
+// Dump info
+textEntryBox.key(['C-q'], function(ch, key) { dumpData() });
+
+// Some line editing
+textEntryBox.key(['C-u'], function(ch, key) { clearTextBox() });
+
 // Scrolling
 // OS X's default terminal apparently uses ^[OA and ^[OB instead, need
 // to implemeent those. 
@@ -345,6 +373,7 @@ textEntryBox.key(['C-e'], function(ch, key) { scrollBy(1); });
 
 screen.on('resize', onScreenResize);
 
+// Scroll the current tab by n lines (positive = down, negative = up)
 var scrollBy = function scrollBy(n) {
 	mainTabBar.activeTab.scrollBy(n);
 	mainTabBar.updateBar();
@@ -374,6 +403,66 @@ var onScreenResize = function onScreenResize() {
 	screen.render();
 };
 
+// Steam friends handling stuff. These are strictly friend relationship. 
+// Nothing related to online/offline status happens here. 
+// When we get 'relationships', it means node-steam has filled in
+// the 'friends' property. 
+var onSteamRelationships = function onSteamRelationships() {
+	steamFriends = sc.friends;
+	var numFriends = Object.keys(steamFriends).length;
+	writeSystemMsg('Got data for ' + numFriends + ' friends');
+	steamUsers = sc.users;
+	var numUsers = Object.keys(steamFriends).length;
+	writeSystemMsg('Got data for ' + numUsers + ' users');
+
+	// We need to combine these two data structures into one
+	for (id in steamFriends) {
+		makeFlDataEntry(id);
+	};
+	updateFriendsTab();
+};
+
+// Copy all props so we have a more independent copy of the data
+var makeFlDataEntry = function makeFlDataEntry(uid) {
+	flData[uid] = {};
+	flData[uid]['friendStatus'] = steamFriends[uid];
+	var userObj = steamUsers[uid];
+	for (prop in userObj) {
+		flData[uid][prop] = userObj[prop];
+	};
+};
+
+// The 'friend' event is when the state of one friend has
+// changed. 
+var onSteamFriend = function onSteamFriend(friend, relation) {
+	steamFriends[friend] = relation;
+	writeSystemMsg('New relation for friend ' + friend + ': ' + relation);
+	makeFlDataEntry(uid);
+	updateFriendsTab();
+	
+};
+
+var onSteamUser = function onSteamUser(newUserData) {
+	var uid = newUserData.friendid;
+	steamUsers[uid] = newUserData;
+	makeFlDataEntry(uid);
+	updateFriendsTab();
+};
+
+var dumpData = function dumpData() {
+	writeSystemMsg(JSON.stringify(steamFriends));
+	writeSystemMsg(JSON.stringify(steamUsers));
+	writeSystemMsg(JSON.stringify(flData));
+	//writeSystemMsg(JSON.stringify(
+};
+	
+var friendsTab = new friendsTabClass(screen, flData);
+mainTabBar.addTab(friendsTab);
+
+var updateFriendsTab = function updateFriendsTab() {
+	friendsTab.updateContent();
+};
+
 // Steam login stuff
 // Login, only passing authCode if it exists
 var logOnDetails = {
@@ -390,3 +479,6 @@ sc.logOn(logOnDetails);
 sc.on('loggedOn', onSteamLogOn);
 sc.on('sentry', onSteamSentry);
 sc.on('servers', onSteamServers);
+sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
+sc.on('friend', onSteamFriend);
+//sc.on('user', onSteamUser);

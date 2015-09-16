@@ -198,8 +198,18 @@ tabMan.prototype.updateBar = function() {
 		// which is going to be the same except for System
 		var chan = tab.title;
 		var isActive = tab.isActive;
-		var unread = tab.numUnread;
-		var hasUnread = (unread > 0); 
+		// As a temporary hack, tabs that do not support unread
+		// message count can simply report -1 unread messages
+		var supportsUnread = (tab.numUnread >= 0);
+		var unread;
+		var hasUnread;
+		if (supportsUnread) {
+			unread = tab.numUnread;
+			hasUnread = (unread > 0); 
+		} else {
+			unread = 0;
+			hasUnread = false;
+		};
 		// There are three ways a tab can be formatted:
 		// Inactive, no unread (white on black)
 		// Inactive, unread (red on black)
@@ -207,16 +217,36 @@ tabMan.prototype.updateBar = function() {
 		// Active, unread (undecided). Only happens when you scroll up and
 		//		more message arrive in the meantime, but this is not implemented yet. 
 
+		var openTag = '';
+		var closeTag = '';
+		var showUnread = supportsUnread;
+		
 		if (isActive) {
-			barText += '{black-fg}{white-bg} ' + chan +  ' (' + unread + ') {/black-fg}{/white-bg}';
+			openTag = '{black-fg}{white-bg}';
+			closeTag = '{/black-fg}{/white-bg}';
 		} else {
-			if (hasUnread){
-				barText += '{red-fg}{black-bg} ' + chan + ' (' + unread + ') {/red-fg}{/black-fg}';
+			if (supportsUnread && hasUnread) {
+				openTag = '{red-fg}{black-bg}';
+				closeTag = '{/red-fg}{/black-bg}';
 			} else {
-				//barText += '{white-fg}{black-bg} ' + chan +  ' (' + unread + ') ';
-				barText += ' ' + chan +  ' (' + unread + ') ';
+				openTag = '';
+				closeTag = '';
 			};
+		};	
+
+		var thisTabText = '';
+		// Add opening style tag
+		thisTabText += openTag;
+		// Space before the text
+		thisTabText += ' ';
+		thisTabText += chan;
+
+		if (showUnread) {
+			thisTabText += ' (' + unread + ')';
 		};
+		thisTabText += ' ';
+		thisTabText += closeTag;
+		barText += thisTabText;
 	};
 
 	// Push our new tab bar content
@@ -224,10 +254,10 @@ tabMan.prototype.updateBar = function() {
 	this.screen.render();
 };
 
-var friendsTab = function friendsTab(screen) {
+var friendsTab = function friendsTab(screen, flData) {
 	this.screen = screen;
 	this.channel = '<friends>';
-	this.title = Friends;
+	this.title = 'Friends';
 	this.tab = blessed.text({
 		top: 2,
 		left: 0,
@@ -238,15 +268,18 @@ var friendsTab = function friendsTab(screen) {
 		alwaysScroll: true,
 		visible: false,
 	});
-	flData: {};
+	this.flData = flData;
 	// This will be commented out for now to make sure they
 	// don't have any effect (they shouldn't)
 	//this.bottomScroll = true;
 	this.numUnread = -1;
 	this.msgBelow = false;
 	this.tab.hide();
-	this.active = false;
+	this.isActive = false;
+	this.activeLine = 0;
+	this.numLines = 0;
 	
+	this.screen.append(this.tab);
 	this.screen.render();
 
 };
@@ -262,22 +295,58 @@ friendsTab.prototype.makeInactive = function() {
 };
 
 friendsTab.prototype.scrollBy = function(n) {
-	this.tab.scroll(n);
-	this.screen.render();
+	this.activeLine += n;
+	if (this.activeLine < 0) this.activeLine = 0;
+	if (this.activeLine >= this.numLines) this.activeLine = this.numLines - 1;
+	this.updateContent();
 };
 
 friendsTab.prototype.updateContent = function() {
 	// not done
 	// this will be where the friends list data actually
 	// gets processed into something meaningful
+	//this.tab.content = 'Default friends list content';
+	var content = '';
+	var lineNum = 0;
+	setDebugInfo(this.activeLine);
+	var activeLine = this.activeLine;
+	var addLine = function(line) {
+		if (lineNum == activeLine) {
+			content += '{blue-bg}' + line + '{/blue-bg}\n';
+		} else {
+			content += line + '\n';
+		};
+		lineNum++;
+	};
+			
+	addLine('Your friends: ');
+	for (id in this.flData) {
+		var line = '';
+		//line += id;
+		var friendObj = this.flData[id];
+		var gameName = friendObj.gameName;
+		var name = friendObj.playerName;
+		line += name + ' playing ' + gameName;
+			//line += id + ' (Error determining status)';
+		addLine(line);
+	};
+	this.numLines = lineNum;
+	this.tab.content = content;
+	this.screen.render();
 };
-
+/*friendsTab.prototype.updateTabContent = function() {
+	this.updateContent();
+};*/
 friendsTab.prototype.append = function() {
 	// this needs to do nothing, not sure if there's a better
 	// way of handling this. We don't want the user to lose
 	// messages but this isn't a typical log-style tab. 
 };
-
+friendsTab.prototype.addMsg = function() {
+	// Same thing here
+};
+// We'll just share the flData variable, no need for this stuff
+/*
 friendsTab.setFlFull = function(data) {
 	// Set the friends list data from scratch. 
 	// This will probably happen once when logging in but
@@ -288,10 +357,11 @@ friendsTab.setFlPart = function(data) {
 	// Modify the friends list using the data we get
 	// in a steam friends event
 	// TODO
-};
+};*/
 
 
 module.exports = {
 	chatTab: chatTab,
 	tabMan: tabMan,
+	friendsTab: friendsTab,
 };
