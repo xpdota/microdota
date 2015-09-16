@@ -100,7 +100,9 @@ var joinChannel = function joinChannel(chanName) {
 	mainTabBar.addTab(newChatTab);
 };
 
-var onDotaChatMessage = function onDotaChatMessage(channel, personaName, message){
+var onDotaChatMessage = function onDotaChatMessage(channel, personaName, message, chatObj){
+	// extra stuff we can get from chatObj
+	var uid = chatObj.accountId;
 	// Get the tab object that corresponds to the channel of the message
 	// we just received. 
 	var chatBox = mainTabBar.getChanTab(channel);
@@ -112,8 +114,10 @@ var onDotaChatMessage = function onDotaChatMessage(channel, personaName, message
 		writeSystemMsg('Received message from undefined channel ' + channel);
 	} else { 
 		chatBox.addMsg(personaName, message);
-	}
+		updateDividerBar(chatBox.msgBelow);
+	};
 	mainTabBar.updateBar();
+
 };
 
 var blessed = require('blessed');
@@ -165,6 +169,17 @@ var tabBar = new blessed.box({
 	tags: true,
 });
 
+var dividerBar = new blessed.box({
+	top: '100%-4',
+	left:0,
+	width: '100%',
+	height: 1,
+	style: {
+		fg: 'black',
+		bg: 'blue',
+	},
+});
+
 // Little 'Press Ctrl-X for help' label
 // TODO
 
@@ -182,6 +197,7 @@ screen.append(debugBox);
 screen.append(textEntryBox);
 screen.append(chanLabel);
 screen.append(tabBar);
+screen.append(dividerBar);
 // textEntryBox needs to pretty much always have focus. 
 // It gets refocused automatically after sending a message. 
 textEntryBox.focus();
@@ -234,6 +250,8 @@ textEntryBox.on('submit', function(data) {
 var writeCurrentTab = function writeCurrentTab(text) {
 	mainTabBar.activeTab.append(text + '\n');
 };
+
+
 
 // Always-available function for putting stuff in that line below the text
 // entry space
@@ -315,17 +333,34 @@ textEntryBox.key(['C-x'], function(ch, key) { printHelpMessage() });
 // OS X's default terminal apparently uses ^[OA and ^[OB instead, need
 // to implemeent those. 
 screen.enableMouse();
-screen.on('wheelup', function(){ mainTabBar.activeTab.scrollBy(-1); });
-screen.on('wheeldown', function(){ mainTabBar.activeTab.scrollBy(1); });
+screen.on('wheelup', function(){ scrollBy(-1); });
+screen.on('wheeldown', function(){ scrollBy(1); });
 // This *might* work for OS X Terminal.app, untested
-textEntryBox.key(['^[OA'], function(ch, key) { mainTabBar.activeTab.scrollBy(-1); });
-textEntryBox.key(['^[OB'], function(ch, key) { mainTabBar.activeTab.scrollBy(1); });
+textEntryBox.key(['^[OA'], function(ch, key) { scrollBy(-1); });
+textEntryBox.key(['^[OB'], function(ch, key) { scrollBy(1); });
 
-textEntryBox.key(['C-y'], function(ch, key) { mainTabBar.activeTab.scrollBy(-1); });
-textEntryBox.key(['C-e'], function(ch, key) { mainTabBar.activeTab.scrollBy(1); });
+textEntryBox.key(['C-y'], function(ch, key) { scrollBy(-1); });
+textEntryBox.key(['C-e'], function(ch, key) { scrollBy(1); });
 
 screen.on('resize', onScreenResize);
 
+var scrollBy = function scrollBy(n) {
+	mainTabBar.activeTab.scrollBy(n);
+	mainTabBar.updateBar();
+	updateDividerBar();
+};
+
+// Put 'new messages below' text in divider bar if the channel
+// has received messages while scrolled up. 
+var updateDividerBar = function updateDividerBar() {
+	var msgBelow = mainTabBar.activeTab.msgBelow;
+	if (msgBelow) {
+		dividerBar.content = '   ↓ Scroll down to see new messages ↓';
+	} else {
+		dividerBar.content = '';
+	};
+	screen.render();
+};
 var onScreenResize = function onScreenResize() {
 	// Update tab bar
 	mainTabBar.updateBar();
@@ -333,7 +368,9 @@ var onScreenResize = function onScreenResize() {
 	// previously bottomed out. 
 	for (i = 0; i < mainTabBar.numTabs; i++) {
 		mainTabBar.tabs[i].checkScroll();
+		setDebugInfo('' + i);
 	};
+	screen.render();
 };
 
 // Steam login stuff

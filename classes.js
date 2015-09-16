@@ -41,6 +41,7 @@ var chatTab = function chatTab(screen, channel, title) {
 	this.chatBoxContent = 'Joined channel ' + channel + '\n';
 	this.tab.content = this.chatBoxContent;
 	this.numUnread = 0;
+	this.msgBelow = false;
 	
 };
 // Activate the tab. 
@@ -64,17 +65,18 @@ chatTab.prototype.makeInactive = function() {
 // Scroll up/down by n lines. 
 chatTab.prototype.scrollBy = function(n) {
 	this.tab.scroll(n);
-	this.screen.render();
 	// unshownLines = the number of lines not seen because they're below
 	// our visible area. 
 	// getScroll() is kind of buggy but this doesn't matter for our purposes
 	var unshownLines = this.tab.getScrollHeight() - this.tab.getScroll() - 1;
-	setDebugInfo(' ' + this.tab.getScrollHeight() + ' ' + this.tab.getScroll());
 	if (unshownLines > 0) {
 		this.bottomScroll = false;
 	} else {
 		this.bottomScroll = true;
-	}
+		this.msgBelow = false;
+	};
+	setDebugInfo(' ' + this.tab.getScrollHeight() + ' ' + this.tab.getScroll() + ' ' + this.msgBelow);
+	this.screen.render();
 };
 // Update the actual text displayed in this box
 chatTab.prototype.updateContent = function() {
@@ -91,7 +93,11 @@ chatTab.prototype.append = function(text) {
 	this.chatBoxContent = this.chatBoxContent + text;
 	this.updateContent();
 	this.checkScroll();
-	if (!this.isActive) {
+	if (this.isActive) {
+		if (!this.bottomScroll) {
+			this.msgBelow = true;
+		}
+	} else {
 		this.numUnread++;
 	};
 	this.screen.render();
