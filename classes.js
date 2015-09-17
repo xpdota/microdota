@@ -9,6 +9,8 @@
 // it would be better to not trim any windows where the user is scrolled up
 // since they might be reading the stuff we want to trim. 
 
+// Really, the chat tab should be a list of entries like how the friends list
+// is. 
 
 var blessed = require('blessed');
 
@@ -26,7 +28,7 @@ var youTagEnd = '{/blue-fg}';
 // Class for a chat tab
 // Doesn't have anything to do with the visual tab, that's 
 // handled entirely in tabMan
-var chatTab = function chatTab(screen, channel, title) {
+var chatTab = function chatTab(screen, channel, title, sendFunc) {
 	this.screen = screen;
 	this.channel = channel;
 	this.title = title;
@@ -56,12 +58,18 @@ var chatTab = function chatTab(screen, channel, title) {
 	this.msgBelow = false;
 	// Probably want a better way of doing this
 	this.isSteamMsg = (channel.slice(0, 6) == 'Steam:');
-		
-	
+	this.acceptsInput = true;
+	this.sendFunc = sendFunc;
+	this.commands = [];
+};
+chatTab.prototype.sendInput = function(entryObj) {
+	if (entryObj.isMsg) {
+		this.sendFunc(entryObj.msg);
+	};
 };
 // Activate the tab. 
 // Only tabMan should call this. 
-chatTab.prototype.makeActive = function(){
+chatTab.prototype.makeActive = function() {
 	this.isActive = true;
 	this.tab.show();
 	if (this.bottomScroll) {
@@ -119,14 +127,13 @@ chatTab.prototype.append = function(text) {
 };
 // Format and add a message
 chatTab.prototype.addMsg = function(name, message, own) {
-	own = own | false;
+	own = own || false;
 	var namePart;
 	if (own) {
 		name = name + ' (You)'
 		namePart = youTag + name + youTagEnd + ': ';
 	} else {
 		namePart = nameTag + name + nameTagEnd + ': ';
-
 	};
 	var chanPart;
 	if (this.isSteamMsg) {
@@ -137,6 +144,11 @@ chatTab.prototype.addMsg = function(name, message, own) {
 	var msgPart = message;
 	fullText = chanPart + namePart + msgPart + '\n';
 	this.append(fullText);
+};
+
+// Initial code for closing a tab
+chatTab.prototype.close = function() {
+	this.screen.detach(this.tab);
 };
 
 // Tab manager class
@@ -164,6 +176,34 @@ tabMan.prototype.switchToNum = function(n) {
 	this.updateChanLabel();
 	this.tabs[this.activeIndex].makeActive();
 	this.updateBar();
+};
+
+// Close tab n
+tabMan.prototype.closeTabNum = function(n) {
+	var oldActiveIndex = this.activeIndex;
+	var newActiveIndex;
+	var tab = this.tabs[n];
+	tab.close();
+	this.tabs.splice(n, 1);
+	// Case where we're removing the active tab
+	if (n == oldActiveIndex) {
+		if (oldActiveIndex >= numTabs) {
+			newActiveIndex = numTabs - 1;
+		} else {
+			newActiveIndex = oldActiveIndex;
+			this.tabs[newActiveIndex].makeActive();
+		};
+	} else if (n < oldActiveIndex) {
+		// case where the tab we're removing is before the active tab
+		newActiveIndex = oldActiveIndex - 1;
+	} else if (n > oldActiveIndex) {
+		// Case where the tab we're removing is after the active tab
+		// Nothing to do here
+	};
+	this.numTabs = this.tabs.length;
+
+
+			
 };
 
 // Update the 'send a message to <channel>' label
@@ -275,7 +315,7 @@ tabMan.prototype.updateBar = function() {
 };
 
 // Class for the friends list tab. 
-var friendsTab = function friendsTab(screen, flData) {
+var friendsTab = function friendsTab(screen, flData, sendMessageFunc) {
 	this.screen = screen;
 	this.channel = '<friends>';
 	this.title = 'Friends';
@@ -292,17 +332,16 @@ var friendsTab = function friendsTab(screen, flData) {
 	this.flData = flData;
 	this.entries = [];
 	this.activeLine = 0;
-	// This will be commented out for now to make sure it
-	// doesn't have any affect (it shouldn't). 
-	//this.bottomScroll = true;
+	// numUnread = -1 means "hide the unread count"
 	this.numUnread = -1;
 	this.msgBelow = false;
 	this.tab.hide();
 	this.isActive = false;
 	this.numLines = 0;
-	
+	this.acceptsInput = true;
 	this.screen.append(this.tab);
 	this.screen.render();
+	this.sendFunc = sendMessageFunc;
 
 };
 friendsTab.prototype.makeActive = function() {
@@ -316,7 +355,15 @@ friendsTab.prototype.makeInactive = function() {
 	this.screen.render();
 };
 friendsTab.prototype.getActiveEntry = function() {
-	return this.entries[this.activeLine];
+	var activeEntry = this.entries[this.activeLine];
+	return activeEntry;
+};
+friendsTab.prototype.sendInput = function(entryObj) {
+	var activeEntry = this.getActiveEntry();
+	var idToMsg = this.getActiveEntry().id;
+	if (idToMsg) {
+		this.sendFunc(idToMsg);
+	};
 };
 
 // Currently, we're using scrolling here to mean "inc/dec selection", 
@@ -424,6 +471,7 @@ var friendEntry = function friendEntry(id, flEntry) {
 	this.isActive = false;
 	this.onlineStatus = flEntry.personaState;
 	this.statusText = personaStateNames[this.onlineStatus];
+	this.rpText = flEntry.rpString || false;
 };
 friendEntry.prototype.makeActive = function() {
 	this.isActive = true;
@@ -443,6 +491,9 @@ friendEntry.prototype.toMenuString = function() {
 	};
 	if (needStatus) {
 		auxParts.push(this.statusText);
+	};
+	if (this.rpText) {
+		auxParts.push(this.rpText);
 	};
 	if (auxParts.length > 0) {
 		var auxText = auxParts.join(', ');

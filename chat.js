@@ -24,12 +24,18 @@ var sc = new steam.SteamClient();
 var dota = new Dota2.Dota2Client(sc, true);
 global.steamcreds = require('./steamcreds');
 var config = require('./config');
+var richPresence = require('./richPresence');
+var rpToText = richPresence.rpToText;
 
 // Pull stuff from config files
 var chatChannels = config.channels;
 var defaultTab = config.defaultChan;
 var ownName = steamcreds.steam_name;
 var cmdLeader = config.cmdLeader;
+
+// TODO: just get your name from steam itself so you can 
+// tell this to not touch your name
+//global.ownSteamName = ownName;
 
 
 // These can be used by whatever to see if 
@@ -51,19 +57,6 @@ var friendsTabClass = classes.friendsTab;
 // Disable debugging output from these modules
 sc.debug = false;
 dota.debug = false;
-
-// Callback when the steam connection is ready
-var onSteamLogOn = function onSteamLogOn(){
-	// Set display name
-	sc.setPersonaName(steamcreds.steam_name);
-	sc.setPersonaState(steam.EPersonaState.Online);
-	writeSystemMsg('Logged on to Steam');
-	// Start node-dota2
-	dota.launch();
-	dota.on('ready', onDotaReady);
-	dota.on('unready', onDotaUnready);
-	dota.on('chatMessage', onDotaChatMessage);
-};
 
 // Boilerplate stuff
 onSteamSentry = function onSteamSentry(sentry) {
@@ -104,7 +97,11 @@ var joinDefaultChannels = function joinDefaultChannels() {
 var joinChannel = function joinChannel(chanName) {
 	dota.joinChat(chanName);
 	writeSystemMsg('Joining channel ' + chanName);
-	var newChatTab = new chatTab(screen, chanName, chanName);
+	var sendFunc = function sendFunc(msg) {
+		this.addMsg(ownName, msg, true);
+		sendDotaMessage(chanName, msg);
+	};
+	var newChatTab = new chatTab(screen, chanName, chanName, sendFunc);
 	mainTabBar.addTab(newChatTab);
 };
 
@@ -198,6 +195,9 @@ chanLabel.content = 'default chanLabel content';
 // sysTab is the <system> tab
 // mainTabBar is the tab manager, not the tab bar itself
 var sysTab = new chatTab(screen, '<system>', 'System');
+sysTab.sendInput = function sendInput(entryObj) {
+	writeSystemMsg('You can\'t write messages here');
+};
 var mainTabBar = new tabMan(sysTab, chanLabel, tabBar, screen);
 
 // Put stuff on the screen
@@ -214,35 +214,51 @@ screen.render();
 
 // What happens when you press enter
 textEntryBox.on('submit', function(data) {
+	// Possibilities here and what should happen:
+	// Tab does not accept input, user sent a command: Locally process it
+	// Tab does not accept input, user sent a message: discard/warn
+	// Tab does accept input:
+	// 	Send all input to the tab first
+	// 	If the tab returns something, process it normally
+
+	// What we'll do is process stuff here, but even if we find a command we'll hold off
+	// on processing it. Instead, we'll give the sending function a chance to do stuff, 
+	// including modifying the object it was passed. 
+	// That means if the sendInput is handling the command itself, it can set isCmd to false
+	// so that it doesn't also get processed as a system command. 
+
 	// Figure out if the message begins with cmdLeader
 	// If so, try to process it as a command
 	var chatBox = mainTabBar.activeTab;
-	var channel = chatBox.channel;
+	var acceptsInput = chatBox.acceptsInput || false;
 	var l = cmdLeader.length;
+	var isCmd = false;
 	if (data.slice(0, l) == cmdLeader) {
-		// Take off the cmdLeader
+		isCmd = true;
 		var cmd = data.slice(l);
-		processCmd(cmd);
-	} else {
-		// TODO: make a more object-oriented way of determining which tabs can actually
-		// take a message
-		if (channel == '<system>') {
-			// Putting a non-command message in the system window is nonsensical
-			writeSystemMsg('You can\'t send messages here. Switch to a channel.');
-		} else if (channel == '<friends>') {
-			var idToMsg = chatBox.getActiveEntry().id;
-			if (idToMsg) {
-				createOrSwitchMsgTab(idToMsg);
-			};
-		} else {
-			var message = data;
-			// Tag own messages with a You
-			var messageText = '<' + channel + '> ' + ownName + ' (You): ' + message + '\n';
-			//chatBox.append(messageText);
-			chatBox.addMsg(ownName, message, true);
-			sendMessage(channel, data);
-		};
 	};
+	var message = '';
+	if (!isCmd) {
+		var message = data;
+	};
+	var entryObj = {
+		raw: data,
+		isCmd: isCmd,
+		isMsg: !isCmd,
+		msg: message,
+		cmd: cmd,
+	};
+	//var channel = chatBox.channel;
+	if (acceptsInput) {
+		chatBox.sendInput(entryObj);
+	};
+
+	// If the sendInput function from the chat window did not take care of
+	// the command, process it normally. 
+	if (entryObj.isCmd) {
+		processCmd(entryObj.cmd);
+	};
+	// TODO: move system channel rejection elsewhere
 	// Clear the box, redraw the screen to reflect that. 
 	// Also refocus it. 
 	textEntryBox.clearValue();
@@ -250,13 +266,12 @@ textEntryBox.on('submit', function(data) {
 	screen.render();
 });
 
-var sendMessage = function sendMessage(channel, data) {
-	if (channel.slice(0,6) == 'Steam:') {
-		var id = channel.slice(6);
-		sc.sendMessage(id, data);
-	} else {
-		dota.sendMessage(channel, data);
-	};
+var sendDotaMessage = function sendMessage(channel, data) {
+	dota.sendMessage(channel, data);
+};
+
+var sendSteamMessage = function sendSteamMessage(id, data) {
+	sc.sendMessage(id, data);
 };
 
 // ^U functionality
@@ -303,6 +318,7 @@ var writeSystemMsg = function writeSystemMsg(text) {
 	sysTab.append('<system> ' + text + '\n');
 	mainTabBar.updateBar();
 };
+global.writeSystemMsg = writeSystemMsg;
 
 // Ctrl-X help message
 var printHelpMessage = function printHelpMessage() {
@@ -443,6 +459,17 @@ var makeFlDataEntry = function makeFlDataEntry(uid) {
 	};
 };
 
+var getUserData = function getUserData(id) {
+	if (id in flData) {
+		return flData[id];
+	} else if (id in steamUsers) {
+		return steamUsers[id];
+	};
+	// I wonder if there's a way to get data for an arbitrary person
+	// for when we don't have it in steam.users. 
+	return {};
+};
+
 // The 'friend' event is when the state of one friend has
 // changed. 
 var onSteamFriend = function onSteamFriend(friend, relation) {
@@ -468,8 +495,6 @@ var dumpData = function dumpData() {
 	//writeSystemMsg(JSON.stringify(
 };
 	
-var friendsTab = new friendsTabClass(screen, flData);
-mainTabBar.addTab(friendsTab);
 
 // Update friends list content
 var updateFriendsTab = function updateFriendsTab() {
@@ -478,7 +503,13 @@ var updateFriendsTab = function updateFriendsTab() {
 
 // Create a tab for steam messaging
 var createSteamMsgTab = function createSteamMsgTab(id) {
-	var newTab = new chatTab(screen, 'Steam:' + id, steamUsers[id].playerName);
+	//setDebugInfo(id);
+	//setDebugInfo(JSON.stringify(steamUsers[id]));
+	var sendFunc = function sendFunc(msg) {
+		this.addMsg(ownName, msg, true);
+		sendSteamMessage(id, msg);
+	}
+	var newTab = new chatTab(screen, 'Steam:' + id, steamUsers[id].playerName, sendFunc);
 	mainTabBar.addTab(newTab);
 	return newTab;
 };
@@ -502,8 +533,10 @@ var findMsgTab = function findMsgTab(id, switchTo) {
 // Create a tab for messaging if it doesn't exist. 
 // Switch to it. 
 var createOrSwitchMsgTab = function createOrSwitchMsgTab(id) {
+	setDebugInfo('Creating or switching to tab for id ' + id);
 	var found = findMsgTab(id, true).found;
 	if (!found) {
+		setDebugInfo('creating');
 		createSteamMsgTab(id);
 		findMsgTab(id, true);
 	};
@@ -525,6 +558,22 @@ var onSteamMsg = function onSteamMsg(id, message, type) {
 	tab.addMsg(name, message, false);
 	mainTabBar.updateBar();
 };
+var friendsTab = new friendsTabClass(screen, flData, createOrSwitchMsgTab);
+mainTabBar.addTab(friendsTab);
+
+var onSteamRP = function onSteamRP(id, text, extra1, extra2) {
+	extra1 = extra1 || '';
+	extra2 = extra2 || '';
+	rpObj = {};
+	rpObj.text = text;
+	rpObj.arg1 = extra1;
+	rpObj.arg2 = extra2;
+	writeSystemMsg('Got RP Data: ' + [id, text, extra1, extra2].join('; '));
+	var userObj = getUserData(id);
+	userObj.rpObj = rpObj;
+	userObj.rpString = rpToText(rpObj);
+	updateFriendsTab();
+};
 
 // Steam login stuff
 // Login, only passing authCode if it exists
@@ -536,13 +585,32 @@ if (steamcreds.steam_guard_code) logOnDetails.authCode = steamcreds.steam_guard_
 var sentry = fs.readFileSync('sentry');
 if (sentry.length) logOnDetails.shaSentryfile = sentry;
 writeSystemMsg('Logging on to Steam...');
-// TODO: Catch errors from this and alert the user in a more
-// friendly way than an error number and traceback.  
-sc.logOn(logOnDetails);
+
+
+// Callback when the steam connection is ready
+var onSteamLogOn = function onSteamLogOn(){
+	// Set display name
+	sc.setPersonaName(steamcreds.steam_name);
+	sc.setPersonaState(steam.EPersonaState.Online);
+	writeSystemMsg('Logged on to Steam');
+	sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
+	sc.on('friend', onSteamFriend);
+	sc.on('user', onSteamUser);
+	sc.on('friendMsg', onSteamMsg);
+	sc.on('richPresence', onSteamRP);
+	// Start node-dota2
+	dota.launch();
+	dota.on('ready', onDotaReady);
+	dota.on('unready', onDotaUnready);
+	dota.on('chatMessage', onDotaChatMessage);
+};
 sc.on('loggedOn', onSteamLogOn);
 sc.on('sentry', onSteamSentry);
 sc.on('servers', onSteamServers);
-sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
-sc.on('friend', onSteamFriend);
-sc.on('user', onSteamUser);
-sc.on('friendMsg', onSteamMsg);
+
+
+// TODO: Catch errors from this and alert the user in a more
+// friendly way than an error number and traceback.  
+// Delay this since we want users to fill as well. 
+sc.logOn(logOnDetails);
+
