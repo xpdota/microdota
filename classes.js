@@ -54,6 +54,9 @@ var chatTab = function chatTab(screen, channel, title) {
 	this.tab.content = this.chatBoxContent;
 	this.numUnread = 0;
 	this.msgBelow = false;
+	// Probably want a better way of doing this
+	this.isSteamMsg = (channel.slice(0, 6) == 'Steam:');
+		
 	
 };
 // Activate the tab. 
@@ -87,7 +90,7 @@ chatTab.prototype.scrollBy = function(n) {
 		this.bottomScroll = true;
 		this.msgBelow = false;
 	};
-	setDebugInfo(' ' + this.tab.getScrollHeight() + ' ' + this.tab.getScroll() + ' ' + this.msgBelow);
+	//setDebugInfo(' ' + this.tab.getScrollHeight() + ' ' + this.tab.getScroll() + ' ' + this.msgBelow);
 	this.screen.render();
 };
 // Update the actual text displayed in this box
@@ -125,7 +128,12 @@ chatTab.prototype.addMsg = function(name, message, own) {
 		namePart = nameTag + name + nameTagEnd + ': ';
 
 	};
-	var chanPart = '<' + chanTag + this.channel + chanTagEnd + '> ';
+	var chanPart;
+	if (this.isSteamMsg) {
+		chanPart = '';	
+	} else {
+		chanPart = '<' + chanTag + this.channel + chanTagEnd + '> ';
+	};
 	var msgPart = message;
 	fullText = chanPart + namePart + msgPart + '\n';
 	this.append(fullText);
@@ -160,7 +168,7 @@ tabMan.prototype.switchToNum = function(n) {
 
 // Update the 'send a message to <channel>' label
 tabMan.prototype.updateChanLabel = function() {
-	this.chanLabel.content = 'Send a message to ' + this.activeTab.channel + ':';
+	this.chanLabel.content = 'Send a message to ' + this.activeTab.title + ':';
 	this.screen.render();
 }
 	
@@ -282,6 +290,8 @@ var friendsTab = function friendsTab(screen, flData) {
 		visible: false,
 	});
 	this.flData = flData;
+	this.entries = [];
+	this.activeLine = 0;
 	// This will be commented out for now to make sure it
 	// doesn't have any affect (it shouldn't). 
 	//this.bottomScroll = true;
@@ -289,7 +299,6 @@ var friendsTab = function friendsTab(screen, flData) {
 	this.msgBelow = false;
 	this.tab.hide();
 	this.isActive = false;
-	this.activeLine = 0;
 	this.numLines = 0;
 	
 	this.screen.append(this.tab);
@@ -306,6 +315,9 @@ friendsTab.prototype.makeInactive = function() {
 	this.tab.hide();
 	this.screen.render();
 };
+friendsTab.prototype.getActiveEntry = function() {
+	return this.entries[this.activeLine];
+};
 
 // Currently, we're using scrolling here to mean "inc/dec selection", 
 // not actually scroll the viewport. I'll have to figure out what we're doing
@@ -313,58 +325,73 @@ friendsTab.prototype.makeInactive = function() {
 // follows the selection, with a buffer of a few lines above and below it 
 // if possible. 
 friendsTab.prototype.scrollBy = function(n) {
+	this.entries[this.activeLine].makeInactive();
 	this.activeLine += n;
 	if (this.activeLine < 0) this.activeLine = 0;
 	if (this.activeLine >= this.numLines) this.activeLine = this.numLines - 1;
+	this.entries[this.activeLine].makeActive();
 	this.updateContent();
 };
 
+// This is what will get called when the friend data itself changes
+friendsTab.prototype.updateFriendsList = function() {
+	// Need to get the the old active ID
+	var findActive = false;
+	var newActiveLine = 0;
+	if (this.activeLine > 0) {
+		findActive = true;
+		var oldActiveId = this.entries[this.activeLine].id;
+	};
+	var foundActiveId = false;
+	var header = {
+		id: false,
+		toMenuString: function() { return 'Friends list: '; },
+		makeActive: function() { this.isActive = true; },
+		makeInactive: function() {this.isActive = false; }
+	};
+	if (this.activeLine == 0) {
+		header.makeActive();
+	};
+	this.entries = [header];
+	for (id in this.flData) {
+		var flObj = new friendEntry(id, this.flData[id]);
+		this.entries.push(flObj);
+		if (id == oldActiveId) {
+			foundActiveId = true;
+			newActiveLine = this.entries.length - 1;
+			flObj.makeActive();
+		};
+	};
+	this.activeLine = newActiveLine;
+	this.numLines = this.entries.length;
+	this.updateContent();
+};
+// This is the screen refreshing function when you scroll or do some other option
 friendsTab.prototype.updateContent = function() {
-	// not done
-	// This will be where the friends list data actually
-	// gets processed into something meaningful
-	//this.tab.content = 'Default friends list content';
-	// TODO: put it in a meaningful order (e.g. in dota first, then online)
-	// TODO: turn entries here into real objects so that it's easier to 
 	// actually do stuff with the selection. 
-	var content = '';
-	// lineNum keeps track of the current line so we can highlight
-	// the active line. 
-	var lineNum = 0;
-	// Active line is the one to highlight. 
-	var activeLine = this.activeLine;
 	// Function to add a line, highlight it if it's the active line, and 
 	// incremenet lineNum. 
 	// The final value of lineNum is used to set this.numLines which
 	// is used to restrict selection to valid lines. 
-	var addLine = function(line) {
-		if (lineNum == activeLine) {
-			content += '{blue-bg}' + line + '{/blue-bg}\n';
+	var content = '';
+	var numLines = this.entries.length;
+
+	var addLine = function(flObj) {
+		var line = flObj.toMenuString();
+		if (flObj.isActive) {
+			content += '{inverse}' + line + '{/inverse}\n';
 		} else {
 			content += line + '\n';
 		};
-		lineNum++;
 	};
-	// Initial line
-	// Might add more things, like an "add friends"
-	addLine('Your friends: ');
-	for (id in this.flData) {
-		var line = '';
-		var friendObj = this.flData[id];
-		var gameName = friendObj.gameName;
-		var name = friendObj.playerName;
-		line += name + ' playing ' + gameName;
-		// If the friend is not also in the list of known users, then
-		// both their name and other info will be undefined, but 
-		// somehow this doesn't result in a fatal error. Gotta love JS.  
-		// TODO: somehow look up data for unknown users. 
-		addLine(line);
+	for (i = 0; i < numLines; i++) {
+		var flObj = this.entries[i];
+		addLine(flObj);
 	};
-	// Use final value of lineNum as the number of lines in the list. 
-	this.numLines = lineNum;
 	// Update actual text box content and update the screen. 
 	this.tab.content = content;
 	this.screen.render();
+	
 };
 
 friendsTab.prototype.append = function() {
@@ -377,6 +404,66 @@ friendsTab.prototype.append = function() {
 friendsTab.prototype.addMsg = function() {
 	// Same thing here
 };
+
+personaStateNames = {
+	0: 'Offline',
+	1: 'Online',
+	2: 'Busy',
+	3: 'Away',
+	4: 'Snooze',
+	5: 'Looking to Trade',
+	6: 'Looking to Play',
+	7: 'Max' // No idea what this is
+};
+
+var friendEntry = function friendEntry(id, flEntry) {
+	this.flEntry = flEntry;
+	this.id = id;
+	this.name = flEntry.playerName;
+	this.gameName = flEntry.gameName;
+	this.isActive = false;
+	this.onlineStatus = flEntry.personaState;
+	this.statusText = personaStateNames[this.onlineStatus];
+};
+friendEntry.prototype.makeActive = function() {
+	this.isActive = true;
+};
+friendEntry.prototype.makeInactive = function() {
+	this.isActive = false;
+};
+friendEntry.prototype.toMenuString = function() {
+	var out = '';
+	out += this.name;
+	var statusCode = this.onlineStatus;
+	// Only display status if it's something other than "online"
+	var needStatus = (statusCode != 1);
+	var auxParts = [];
+	if (this.gameName) {
+		auxParts.push('Playing ' + this.gameName);
+	};
+	if (needStatus) {
+		auxParts.push(this.statusText);
+	};
+	if (auxParts.length > 0) {
+		var auxText = auxParts.join(', ');
+		out += ' (' + auxText + ')';
+	};
+	// Do tags
+	var openTag = '';
+	var closeTag = '';
+	if (this.gameName == 'Dota 2') {
+		openTag = '{cyan-fg}';
+		closeTag = '{/cyan-fg}';
+	} else if (this.gameName) {
+		openTag = '{green-fg}';
+		closeTag = '{/green-fg}';
+	} else if (statusCode > 0) {
+		openTag = '{blue-fg}';
+		closeTag = '{/blue-fg}';
+	};
+	return openTag + out + closeTag;
+};
+	
 
 module.exports = {
 	chatTab: chatTab,

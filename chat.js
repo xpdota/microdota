@@ -216,7 +216,8 @@ screen.render();
 textEntryBox.on('submit', function(data) {
 	// Figure out if the message begins with cmdLeader
 	// If so, try to process it as a command
-	var channel = mainTabBar.activeTab.channel;
+	var chatBox = mainTabBar.activeTab;
+	var channel = chatBox.channel;
 	var l = cmdLeader.length;
 	if (data.slice(0, l) == cmdLeader) {
 		// Take off the cmdLeader
@@ -225,18 +226,22 @@ textEntryBox.on('submit', function(data) {
 	} else {
 		// TODO: make a more object-oriented way of determining which tabs can actually
 		// take a message
-		if (channel == '<system>' || channel == '<friends>') {
+		if (channel == '<system>') {
 			// Putting a non-command message in the system window is nonsensical
 			writeSystemMsg('You can\'t send messages here. Switch to a channel.');
+		} else if (channel == '<friends>') {
+			var idToMsg = chatBox.getActiveEntry().id;
+			if (idToMsg) {
+				createOrSwitchMsgTab(idToMsg);
+			};
 		} else {
 			var message = data;
 			// Tag own messages with a You
 			var messageText = '<' + channel + '> ' + ownName + ' (You): ' + message + '\n';
-			var chatBox = mainTabBar.getChanTab(channel);
 			//chatBox.append(messageText);
 			chatBox.addMsg(ownName, message, true);
-			dota.sendMessage(channel, data);
-		}
+			sendMessage(channel, data);
+		};
 	};
 	// Clear the box, redraw the screen to reflect that. 
 	// Also refocus it. 
@@ -244,6 +249,15 @@ textEntryBox.on('submit', function(data) {
 	textEntryBox.focus();
 	screen.render();
 });
+
+var sendMessage = function sendMessage(channel, data) {
+	if (channel.slice(0,6) == 'Steam:') {
+		var id = channel.slice(6);
+		sc.sendMessage(id, data);
+	} else {
+		dota.sendMessage(channel, data);
+	};
+};
 
 // ^U functionality
 var clearTextBox = function clearTextBox() {
@@ -285,7 +299,7 @@ var setDebugInfo = function setDebugInfo(text) {
 global.setDebugInfo = setDebugInfo;
 
 // Put a message on the system tab, tab it with <system>
-var writeSystemMsg = function writeServerMsg(text) {
+var writeSystemMsg = function writeSystemMsg(text) {
 	sysTab.append('<system> ' + text + '\n');
 	mainTabBar.updateBar();
 };
@@ -398,7 +412,6 @@ var onScreenResize = function onScreenResize() {
 	// previously bottomed out. 
 	for (i = 0; i < mainTabBar.numTabs; i++) {
 		mainTabBar.tabs[i].checkScroll();
-		setDebugInfo('' + i);
 	};
 	screen.render();
 };
@@ -410,10 +423,8 @@ var onScreenResize = function onScreenResize() {
 var onSteamRelationships = function onSteamRelationships() {
 	steamFriends = sc.friends;
 	var numFriends = Object.keys(steamFriends).length;
-	writeSystemMsg('Got data for ' + numFriends + ' friends');
 	steamUsers = sc.users;
 	var numUsers = Object.keys(steamFriends).length;
-	writeSystemMsg('Got data for ' + numUsers + ' users');
 
 	// We need to combine these two data structures into one
 	for (id in steamFriends) {
@@ -437,12 +448,13 @@ var makeFlDataEntry = function makeFlDataEntry(uid) {
 var onSteamFriend = function onSteamFriend(friend, relation) {
 	steamFriends[friend] = relation;
 	writeSystemMsg('New relation for friend ' + friend + ': ' + relation);
-	makeFlDataEntry(uid);
+	makeFlDataEntry(friend);
 	updateFriendsTab();
 	
 };
 
 var onSteamUser = function onSteamUser(newUserData) {
+	//writeSystemMsg('Got user data: ' + JSON.stringify(newUserData));
 	var uid = newUserData.friendid;
 	steamUsers[uid] = newUserData;
 	makeFlDataEntry(uid);
@@ -450,17 +462,68 @@ var onSteamUser = function onSteamUser(newUserData) {
 };
 
 var dumpData = function dumpData() {
-	writeSystemMsg(JSON.stringify(steamFriends));
-	writeSystemMsg(JSON.stringify(steamUsers));
-	writeSystemMsg(JSON.stringify(flData));
+	writeSystemMsg('Friends: ' + JSON.stringify(steamFriends));
+	writeSystemMsg('Users: ' + JSON.stringify(steamUsers));
+	writeSystemMsg('Joined: ' + JSON.stringify(flData));
 	//writeSystemMsg(JSON.stringify(
 };
 	
 var friendsTab = new friendsTabClass(screen, flData);
 mainTabBar.addTab(friendsTab);
 
+// Update friends list content
 var updateFriendsTab = function updateFriendsTab() {
-	friendsTab.updateContent();
+	friendsTab.updateFriendsList();
+};
+
+// Create a tab for steam messaging
+var createSteamMsgTab = function createSteamMsgTab(id) {
+	var newTab = new chatTab(screen, 'Steam:' + id, steamUsers[id].playerName);
+	mainTabBar.addTab(newTab);
+	return newTab;
+};
+
+// Check if a tab for a particular steam ID exists
+// If switchTo is true, then switch to it. 
+var findMsgTab = function findMsgTab(id, switchTo) {
+	var idString = 'Steam:' + id;
+	switchTo = switchTo | false;
+	for (i = 0; i < mainTabBar.numTabs; i++) {
+		var tab = mainTabBar.tabs[i];
+		if (tab.channel == idString) {
+			if (switchTo)
+				mainTabBar.switchToNum(i);
+			return {found: true, tab: tab};
+		};
+	};
+	return {found: false};
+};
+
+// Create a tab for messaging if it doesn't exist. 
+// Switch to it. 
+var createOrSwitchMsgTab = function createOrSwitchMsgTab(id) {
+	var found = findMsgTab(id, true).found;
+	if (!found) {
+		createSteamMsgTab(id);
+		findMsgTab(id, true);
+	};
+};
+	
+var onSteamMsg = function onSteamMsg(id, message, type) {
+	// Only react if it's a chat message
+	if (type != 1) return;
+	var result = findMsgTab(id);
+	var tab;
+	if (result.found) {
+		// Do stuff
+		tab = result.tab;
+	} else {
+		tab = createSteamMsgTab(id);
+	};
+	var userEntry = steamUsers[id];
+	var name = userEntry.playerName;
+	tab.addMsg(name, message, false);
+	mainTabBar.updateBar();
 };
 
 // Steam login stuff
@@ -481,4 +544,5 @@ sc.on('sentry', onSteamSentry);
 sc.on('servers', onSteamServers);
 sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
 sc.on('friend', onSteamFriend);
-//sc.on('user', onSteamUser);
+sc.on('user', onSteamUser);
+sc.on('friendMsg', onSteamMsg);
