@@ -14,15 +14,14 @@
 
 
 // Steam/dota stuff
-var steam = require('steam');
+var Steam = require('steam');
 var util = require('util');
 var fs = require('fs');
 
 var Dota2 = require('dota2');
 var steamcreds = require('./steamcreds.js');
-var sc = new steam.SteamClient();
+var sc = new Steam.SteamClient();
 var dota = new Dota2.Dota2Client(sc, true);
-global.steamcreds = require('./steamcreds');
 var config = require('./config');
 var richPresence = require('./richPresence');
 var rpToText = richPresence.rpToText;
@@ -61,16 +60,13 @@ sc.debug = false;
 dota.debug = false;
 
 // Boilerplate stuff
-onSteamSentry = function onSteamSentry(sentry) {
-	//util.log("Received sentry.");
-	writeSystemMsg('Got Steam sentry');
-	require('fs').writeFileSync('sentry', sentry);
+var sha1 = function sha1(data) {
+	var crypto = require('crypto');
+	var shasum = crypto.createHash('sha1');
+	shasum.update(data);
+	return shasum.digest();
 };
-onSteamServers = function onSteamServers(servers) {
-	writeSystemMsg('Got Steam servers');
-	//util.log("Received servers.");
-	fs.writeFile('servers', JSON.stringify(servers));
-};
+	
 
 // Dota connection is ready
 var onDotaReady = function onDotaReady() {
@@ -355,7 +351,7 @@ var joinCmd = function joinCmd(fullCmd, argv) {
 
 var profileCmd = function profileCmd(fullCmd, argv) {
 	var playerId = parseInt(argv[1])
-	dota.profileRequest(playerId);
+	dota.requestProfile(playerId);
 	writeSystemMsg('Requesting profile for ' + playerId);
 };
 	
@@ -599,50 +595,77 @@ var onDotaProfile = function onDotaProfile(id, profileData) {
 	fs.writeFile(fileName, profileString);
 	//writeSystemMsg('Profile ' + id + ': ' + JSON.stringify(profileData));
 };
-
-// Steam login stuff
-// Login, only passing authCode if it exists
-var logOnDetails = {
-	'accountName': steamcreds.steam_user,
-	'password': steamcreds.steam_pass,
-};
-if (steamcreds.steam_guard_code) logOnDetails.authCode = steamcreds.steam_guard_code;
-var sentry = fs.readFileSync('sentry');
-if (sentry.length) logOnDetails.shaSentryfile = sentry;
+//if (steamcreds.steam_guard_code) logOnDetails.authCode = steamcreds.steam_guard_code;
+//var sentry = fs.readFileSync('sentry');
+//if (sentry.length) logOnDetails.shaSentryfile = sentry;
 writeSystemMsg('Logging on to Steam...');
+var steamUser = new Steam.SteamUser(sc);
+var logOnDetails = {
+	account_name: steamcreds.steam_user,
+	password: steamcreds.steam_pass,
+};
+if (steamcreds.steam_guard_code)
+	logOnDetails.auth_code = steamcreds.steam_guard_code;
+var sentry;
+try {
+	fs.readFileSync('sentry');
+} catch (e) {
+};
+if (sentry.length)
+	logOnDetails.sha_sentryfile = sha1(sentry);
 
 
 // Callback when the steam connection is ready
-var onSteamLogOn = function onSteamLogOn(){
-	// Set display name
-	ownSteamId = sc.steamID;
-	sc.setPersonaState(steam.EPersonaState.Online);
-	setTimeout(determineOwnName, 4000);
-	writeSystemMsg('Your steam ID: ' + ownSteamId);
-	//ownName = sc.users[ownSteamId].playerName;
-	if (steamcreds.steam_name) {
-		sc.setPersonaName(steamcreds.steam_name);
+var onSteamLogOn = function onSteamLogOn(logonResp){
+	writeSystemMsg('Logon response: ' + JSON.stringify(logonResp));
+	if (logonResp.eresult == Steam.EResult.OK) {
+		// Set display name
+		ownSteamId = sc.steamID;
+		//sc.setPersonaState(steam.EPersonaState.Online);
+		setTimeout(determineOwnName, 4000);
+		writeSystemMsg('Your steam ID: ' + ownSteamId);
+		//ownName = sc.users[ownSteamId].playerName;
+		if (steamcreds.steam_name) {
+		//	sc.setPersonaName(steamcreds.steam_name);
+		};
+		writeSystemMsg('Logged on to Steam');
+		//sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
+		//sc.on('friend', onSteamFriend);
+		//sc.on('user', onSteamUser);
+		//sc.on('friendMsg', onSteamMsg);
+		//sc.on('richPresence', onSteamRP);
+		// Start node-dota2
+		//dota.launch();
+		//dota.on('ready', onDotaReady);
+		//dota.on('unready', onDotaUnready);
+		//dota.on('chatMessage', onDotaChatMessage);
+		//dota.on('profileData', onDotaProfile);
+	} else {
+		sc.disconnect();
+		writeSystemMsg('Disconnected from steam');
 	};
-	writeSystemMsg('Logged on to Steam');
-	sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
-	sc.on('friend', onSteamFriend);
-	sc.on('user', onSteamUser);
-	sc.on('friendMsg', onSteamMsg);
-	sc.on('richPresence', onSteamRP);
-	// Start node-dota2
-	dota.launch();
-	dota.on('ready', onDotaReady);
-	dota.on('unready', onDotaUnready);
-	dota.on('chatMessage', onDotaChatMessage);
-	dota.on('profileData', onDotaProfile);
 };
-sc.on('loggedOn', onSteamLogOn);
-sc.on('sentry', onSteamSentry);
-sc.on('servers', onSteamServers);
 
+steamUser.on('updateMachineAuth', function(machineAuth, callback) {
+	util.log('Got sentry');
+	fs.writeFileSync('sentry', machineAuth.bytes);
+	var sha = sha1(machineAuth.bytes);
+	callback({sha_file: sha});
+});
 
+sc.on('servers', function(servers) {
+	writeSystemMsg('Got Steam servers');
+	fs.writeFile('servers', JSON.stringify(servers));
+});
 // TODO: Catch errors from this and alert the user in a more
 // friendly way than an error number and traceback.  
 // Delay this since we want users to fill as well. 
-sc.logOn(logOnDetails);
+sc.connect();
+sc.on('connected', function() {
+	steamUser.logOn({
+		account_name: steamcreds.steam_user,
+		password: steamcreds.steam_pass,
+	});
+});
+sc.on('logOnResponse', onSteamLogOn);
 
