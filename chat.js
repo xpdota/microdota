@@ -34,6 +34,10 @@ var ownName = '';
 var ownSteamId = '';
 var cmdLeader = config.cmdLeader;
 
+// Variable that will hold the user's steam guard code if they
+// have to enter it. 
+var enteredSteamGuardCode = '';
+
 // TODO: just get your name from steam itself so you can 
 // tell this to not touch your name
 //global.ownSteamName = ownName;
@@ -123,72 +127,14 @@ var onDotaChatMessage = function onDotaChatMessage(channel, personaName, message
 
 };
 
-var blessed = require('blessed');
-var screen = blessed.screen({
-	smartCSR: true
-});
-
-// Terminal title
-screen.title = 'dChat';
-
-// Where you type messages
-var textEntryBox = blessed.Textbox({
-	inputOnFocus: true,
-	top: '100%-2',
-	left: 2,
-	width: '100%',
-	height: 1,
-	//keys: true,
-	/*border: {
-		fg: 'blue',
-	},*/
-});
-
-// Line below the text entry box
-// setDebugInfo is a global that allows you to put stuff here
-// for easy use. 
-var debugBox = new blessed.text({
-	top: '100%-1',
-	left: 2,
-	width: '100%',
-	height: 1,
-});
-
-// Line above the text entry box which shows the channel you're about to send to
-var chanLabel = new blessed.text({
-	top: '100%-3',
-	left: 2,
-	width: '100%',
-	height: 1,
-});
-
-// Tab bar, handled by tabMan
-// TODO: figure out what to do with the line below it (or remove that)
-var tabBar = new blessed.box({
-	top: 'top',
-	left: 1,
-	width: '100%-2',
-	height: 1,
-	tags: true,
-});
-
-var dividerBar = new blessed.box({
-	top: '100%-4',
-	left:0,
-	width: '100%',
-	height: 1,
-	style: {
-		fg: 'black',
-		bg: 'blue',
-	},
-});
-
-// Little 'Press Ctrl-X for help' label
-// TODO
-
-// This text should never actually appear. 
-// If it does, it's a bug. 
-chanLabel.content = 'default chanLabel content';
+// Moved ui elements to a new file
+var uielements = require('./uielements');
+textEntryBox = uielements.textEntryBox;
+debugBox = uielements.debugBox;
+chanLabel = uielements.chanLabel;
+tabBar = uielements.tabBar;
+dividerBar = uielements.dividerBar;
+screen = uielements.screen;
 
 // sysTab is the <system> tab
 // mainTabBar is the tab manager, not the tab bar itself
@@ -200,12 +146,6 @@ sysTab.sendInput = function sendInput(entryObj) {
 };
 var mainTabBar = new tabMan(sysTab, chanLabel, tabBar, screen);
 
-// Put stuff on the screen
-screen.append(debugBox);
-screen.append(textEntryBox);
-screen.append(chanLabel);
-screen.append(tabBar);
-screen.append(dividerBar);
 // textEntryBox needs to pretty much always have focus. 
 // It gets refocused automatically after sending a message. 
 textEntryBox.focus();
@@ -354,6 +294,18 @@ var profileCmd = function profileCmd(fullCmd, argv) {
 	dota.requestProfile(playerId);
 	writeSystemMsg('Requesting profile for ' + playerId);
 };
+
+var steamGuardCmd = function steamGuardCmd(fullCmd, argv) {
+	var sgCode = argv[1];
+	enteredSteamGuardCode = sgCode;
+	writeSystemMsg('Your steam guard code has been entered. ');
+	writeSystemMsg('Now use /connect to try connecting again. ');
+};
+
+var connectCmd = function connectCmd(fullCmd, argv) {
+	writeSystemMsg('(Re)connecting Steam...');
+	sc.connect();
+};
 	
 // Mapping for commands. 
 // Commands here MUST be defined before being put in here. 
@@ -364,6 +316,8 @@ var cmdMap = {
 	echo: echoCmd,
 	join: joinCmd,
 	profile: profileCmd,
+	sg: steamGuardCmd,
+	connect: connectCmd,
 };
 
 // Controls
@@ -598,22 +552,25 @@ writeSystemMsg('Logging on to Steam...');
 var SteamUser = new Steam.SteamUser(sc);
 var SteamFriends = new Steam.SteamFriends(sc);
 
-var logOnDetails = {
-	account_name: steamcreds.steam_user,
-	password: steamcreds.steam_pass,
-};
-if (steamcreds.steam_guard_code)
-	logOnDetails.auth_code = steamcreds.steam_guard_code;
-var sentry;
-try {
-	writeSystemMsg('Attempting to read sentry file');
-	sentry = fs.readFileSync('sentry');
-	if (sentry.length)
-		writeSystemMsg('Reading from sentry file');
-		logOnDetails.sha_sentryfile = sha1(sentry);
-} catch (e) {
-};
 
+var getLogOnDetails = function getLogOnDetails() {
+	var logOnDetails = {
+		account_name: steamcreds.steam_user,
+		password: steamcreds.steam_pass,
+	};
+	if (enteredSteamGuardCode)
+		logOnDetails.auth_code = enteredSteamGuardCode;
+	var sentry;
+	try {
+		writeSystemMsg('Attempting to read sentry file');
+		sentry = fs.readFileSync('sentry');
+		if (sentry.length)
+			writeSystemMsg('Reading from sentry file');
+			logOnDetails.sha_sentryfile = sha1(sentry);
+	} catch (e) {
+	};
+	return logOnDetails;
+};
 
 // Callback when the steam connection is ready
 var onSteamLogOn = function onSteamLogOn(logonResp){
@@ -639,9 +596,15 @@ var onSteamLogOn = function onSteamLogOn(logonResp){
 		dota.on('unready', onDotaUnready);
 		dota.on('chatMessage', onDotaChatMessage);
 		dota.on('profileData', onDotaProfile);
+	} else if (logonResp.eresult == 63) {
+		sc.disconnect();
+		var emailDomain = logonResp.email_domain;
+		writeSystemMsg('Check your email address at ' + emailDomain + ' for a steam guard code. ');
+		writeSystemMsg('Then, enter it with /sg <code>');
 	} else {
 		sc.disconnect();
-		writeSystemMsg('Disconnected from steam');
+		writeSystemMsg('Logon failed with error ' + logonResp.eresult + '.' );
+		writeSystemMsg('Check your email for a Steam Guard code. If you got one, enter it with /sg <code>');
 	};
 };
 
@@ -662,7 +625,7 @@ sc.on('servers', function(servers) {
 // Delay this since we want users to fill as well. 
 sc.connect();
 sc.on('connected', function() {
-	SteamUser.logOn(logOnDetails);
+	SteamUser.logOn(getLogOnDetails());
 });
 sc.on('logOnResponse', onSteamLogOn);
 
