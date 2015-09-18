@@ -30,7 +30,9 @@ var rpToText = richPresence.rpToText;
 // Pull stuff from config files
 var chatChannels = config.channels;
 var defaultTab = config.defaultChan;
-var ownName = steamcreds.steam_name;
+// Trying to support not changing your name
+var ownName = '';
+var ownSteamId = '';
 var cmdLeader = config.cmdLeader;
 
 // TODO: just get your name from steam itself so you can 
@@ -196,7 +198,9 @@ chanLabel.content = 'default chanLabel content';
 // mainTabBar is the tab manager, not the tab bar itself
 var sysTab = new chatTab(screen, '<system>', 'System');
 sysTab.sendInput = function sendInput(entryObj) {
-	writeSystemMsg('You can\'t write messages here');
+	if (!entryObj.isCmd) {
+		writeSystemMsg('You can\'t write messages here');
+	};
 };
 var mainTabBar = new tabMan(sysTab, chanLabel, tabBar, screen);
 
@@ -214,21 +218,16 @@ screen.render();
 
 // What happens when you press enter
 textEntryBox.on('submit', function(data) {
-	// Possibilities here and what should happen:
-	// Tab does not accept input, user sent a command: Locally process it
-	// Tab does not accept input, user sent a message: discard/warn
-	// Tab does accept input:
-	// 	Send all input to the tab first
-	// 	If the tab returns something, process it normally
-
-	// What we'll do is process stuff here, but even if we find a command we'll hold off
-	// on processing it. Instead, we'll give the sending function a chance to do stuff, 
-	// including modifying the object it was passed. 
-	// That means if the sendInput is handling the command itself, it can set isCmd to false
-	// so that it doesn't also get processed as a system command. 
-
-	// Figure out if the message begins with cmdLeader
-	// If so, try to process it as a command
+	// This is how the lgoic works for this:
+	// 1. Parse it (see if it's a command, if so, which?)
+	// 2. If the chat box accepts input, send it there
+	//		At this point, the chat box itself can modify 
+	// 	the object as it wishes. For example, if the chat box can process
+	//		the command, it can set isCmd to false to make it not be
+	//		processed later as a system command. 
+	// 3. If it is (still) a command, see if we have a system command
+	//		that matches. 
+	// 4. Do the generic stuff (clear the box, update screen, etc). 
 	var chatBox = mainTabBar.activeTab;
 	var acceptsInput = chatBox.acceptsInput || false;
 	var l = cmdLeader.length;
@@ -252,7 +251,6 @@ textEntryBox.on('submit', function(data) {
 	if (acceptsInput) {
 		chatBox.sendInput(entryObj);
 	};
-
 	// If the sendInput function from the chat window did not take care of
 	// the command, process it normally. 
 	if (entryObj.isCmd) {
@@ -266,10 +264,11 @@ textEntryBox.on('submit', function(data) {
 	screen.render();
 });
 
+// Functions to send messages
+// These should be used instead of sc/dota.sendMessage. 
 var sendDotaMessage = function sendMessage(channel, data) {
 	dota.sendMessage(channel, data);
 };
-
 var sendSteamMessage = function sendSteamMessage(id, data) {
 	sc.sendMessage(id, data);
 };
@@ -291,8 +290,6 @@ var deleteWordTextBox = function deleteWordTextBox() {
 	^E, ^Y
 	Nav cluster keys
 	Text editing and navigation in general
-
-
 */
 
 // Write stuff specifically to the current tab
@@ -301,8 +298,6 @@ var deleteWordTextBox = function deleteWordTextBox() {
 var writeCurrentTab = function writeCurrentTab(text) {
 	mainTabBar.activeTab.append(text + '\n');
 };
-
-
 
 // Always-available function for putting stuff in that line below the text
 // entry space
@@ -357,6 +352,12 @@ var joinCmd = function joinCmd(fullCmd, argv) {
 	var chanName = fullCmd.slice(5);
 	joinChannel(chanName);
 };
+
+var profileCmd = function profileCmd(fullCmd, argv) {
+	var playerId = parseInt(argv[1])
+	dota.profileRequest(playerId);
+	writeSystemMsg('Requesting profile for ' + playerId);
+};
 	
 // Mapping for commands. 
 // Commands here MUST be defined before being put in here. 
@@ -366,6 +367,7 @@ var joinCmd = function joinCmd(fullCmd, argv) {
 var cmdMap = {
 	echo: echoCmd,
 	join: joinCmd,
+	profile: profileCmd,
 };
 
 // Controls
@@ -480,12 +482,28 @@ var onSteamFriend = function onSteamFriend(friend, relation) {
 	
 };
 
+// Called when we receive a 'user' event which tells us
+// about new user data. 
 var onSteamUser = function onSteamUser(newUserData) {
 	//writeSystemMsg('Got user data: ' + JSON.stringify(newUserData));
 	var uid = newUserData.friendid;
+	if (uid == ownSteamId) {
+		updateOwnName(newUserData.playerName);
+	};
 	steamUsers[uid] = newUserData;
 	makeFlDataEntry(uid);
 	updateFriendsTab();
+};
+
+// This updates what we think our own account's name is
+var updateOwnName = function updateOwnName(newName) {
+	ownName = newName;
+};
+
+var determineOwnName = function determineOwnName() {
+	if (ownSteamId in steamUsers) {
+		updateOwnName(steamUsers[ownSteamId].playerName);
+	};
 };
 
 var dumpData = function dumpData() {
@@ -494,7 +512,6 @@ var dumpData = function dumpData() {
 	writeSystemMsg('Joined: ' + JSON.stringify(flData));
 	//writeSystemMsg(JSON.stringify(
 };
-	
 
 // Update friends list content
 var updateFriendsTab = function updateFriendsTab() {
@@ -575,6 +592,14 @@ var onSteamRP = function onSteamRP(id, text, extra1, extra2) {
 	updateFriendsTab();
 };
 
+var onDotaProfile = function onDotaProfile(id, profileData) {
+	var profileString = JSON.stringify(profileData);
+	writeSystemMsg('Profile ' + id + ' written to file');
+	var fileName = 'p' + id + '.json';
+	fs.writeFile(fileName, profileString);
+	//writeSystemMsg('Profile ' + id + ': ' + JSON.stringify(profileData));
+};
+
 // Steam login stuff
 // Login, only passing authCode if it exists
 var logOnDetails = {
@@ -590,8 +615,14 @@ writeSystemMsg('Logging on to Steam...');
 // Callback when the steam connection is ready
 var onSteamLogOn = function onSteamLogOn(){
 	// Set display name
-	sc.setPersonaName(steamcreds.steam_name);
+	ownSteamId = sc.steamID;
 	sc.setPersonaState(steam.EPersonaState.Online);
+	setTimeout(determineOwnName, 4000);
+	writeSystemMsg('Your steam ID: ' + ownSteamId);
+	//ownName = sc.users[ownSteamId].playerName;
+	if (steamcreds.steam_name) {
+		sc.setPersonaName(steamcreds.steam_name);
+	};
 	writeSystemMsg('Logged on to Steam');
 	sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
 	sc.on('friend', onSteamFriend);
@@ -603,6 +634,7 @@ var onSteamLogOn = function onSteamLogOn(){
 	dota.on('ready', onDotaReady);
 	dota.on('unready', onDotaUnready);
 	dota.on('chatMessage', onDotaChatMessage);
+	dota.on('profileData', onDotaProfile);
 };
 sc.on('loggedOn', onSteamLogOn);
 sc.on('sentry', onSteamSentry);
