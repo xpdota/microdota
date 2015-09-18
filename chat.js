@@ -144,7 +144,8 @@ sysTab.sendInput = function sendInput(entryObj) {
 		writeSystemMsg('You can\'t write messages here');
 	};
 };
-var mainTabBar = new tabMan(sysTab, chanLabel, tabBar, screen);
+sysTab.closable = false;
+var mainTabBar = new tabMan(sysTab, chanLabel, tabBar, screen, dividerBar);
 
 // textEntryBox needs to pretty much always have focus. 
 // It gets refocused automatically after sending a message. 
@@ -306,6 +307,13 @@ var connectCmd = function connectCmd(fullCmd, argv) {
 	writeSystemMsg('(Re)connecting Steam...');
 	sc.connect();
 };
+
+// Close current tab, if possible. Note that this doesn't necessarily
+// do anything other than close the tab. You'll still be in a chat channel if
+// you close it, there isn't a /part equivalent yet. 
+var closeCmd = function closeCmd(fullCmd, argv) {
+	mainTabBar.closeCurrentTab();
+};
 	
 // Mapping for commands. 
 // Commands here MUST be defined before being put in here. 
@@ -318,6 +326,7 @@ var cmdMap = {
 	profile: profileCmd,
 	sg: steamGuardCmd,
 	connect: connectCmd,
+	close: closeCmd,
 };
 
 // Controls
@@ -365,14 +374,9 @@ var scrollBy = function scrollBy(n) {
 // Put 'new messages below' text in divider bar if the channel
 // has received messages while scrolled up. 
 var updateDividerBar = function updateDividerBar() {
-	var msgBelow = mainTabBar.activeTab.msgBelow;
-	if (msgBelow) {
-		dividerBar.content = '   ↓ Scroll down to see new messages ↓';
-	} else {
-		dividerBar.content = '';
-	};
-	screen.render();
+	mainTabBar.updateDividerBar();
 };
+
 var onScreenResize = function onScreenResize() {
 	// Update tab bar
 	mainTabBar.updateBar();
@@ -574,7 +578,6 @@ var getLogOnDetails = function getLogOnDetails() {
 
 // Callback when the steam connection is ready
 var onSteamLogOn = function onSteamLogOn(logonResp){
-	writeSystemMsg('Logon response: ' + JSON.stringify(logonResp));
 	if (logonResp.eresult == Steam.EResult.OK) {
 		// Set display name
 		ownSteamId = sc.steamID;
@@ -604,7 +607,9 @@ var onSteamLogOn = function onSteamLogOn(logonResp){
 	} else {
 		sc.disconnect();
 		writeSystemMsg('Logon failed with error ' + logonResp.eresult + '.' );
-		writeSystemMsg('Check your email for a Steam Guard code. If you got one, enter it with /sg <code>');
+		writeSystemMsg('Raw logon response: ' + JSON.stringify(logonResp));
+		writeSystemMsg('Please check your username and password. If everything appears to be correct, please file a bug and include the above response. ');
+		writeSystemMsg('In addition, check your email for a Steam Guard code. If you got one, enter it with /sg <code>');
 	};
 };
 

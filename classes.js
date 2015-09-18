@@ -61,6 +61,7 @@ var chatTab = function chatTab(screen, channel, title, sendFunc) {
 	this.acceptsInput = true;
 	this.sendFunc = sendFunc;
 	this.commands = [];
+	this.closable = true;
 };
 chatTab.prototype.sendInput = function(entryObj) {
 	if (entryObj.isMsg) {
@@ -148,13 +149,14 @@ chatTab.prototype.addMsg = function(name, message, own) {
 
 // Initial code for closing a tab
 chatTab.prototype.close = function() {
+	this.makeInactive();
 	this.screen.detach(this.tab);
 };
 
 // Tab manager class
 // Handles keeping track of tabs, switching between them, 
 // and the tab bar. 
-var tabMan = function tabMan(initTab, chanLabel, tabBar, screen) {
+var tabMan = function tabMan(initTab, chanLabel, tabBar, screen, dividerBar) {
 	this.tabs = [initTab];
 	this.activeIndex = 0;
 	this.numTabs = 1;
@@ -162,9 +164,21 @@ var tabMan = function tabMan(initTab, chanLabel, tabBar, screen) {
 	this.activeTab = this.tabs[this.activeIndex];
 	this.chanLabel = chanLabel;
 	this.tabBar = tabBar;
+	this.dividerBar = dividerBar;
 	this.screen = screen;
 	this.updateChanLabel();
 	this.updateBar();
+};
+
+// TODO: needs fixing for system tab
+tabMan.prototype.updateDividerBar = function() {
+	var msgBelow = this.activeTab.msgBelow;
+	if (msgBelow) {
+		this.dividerBar.content = '   ↓ Scroll down to see new messages ↓';
+	} else {
+		this.dividerBar.content = '';
+	};
+	this.screen.render();
 };
 
 // Switch to the numbered tab
@@ -178,32 +192,44 @@ tabMan.prototype.switchToNum = function(n) {
 	this.updateBar();
 };
 
+tabMan.prototype.closeCurrentTab = function() {
+	this.closeTabNum(this.activeIndex);
+};
+	
 // Close tab n
+// Returns true/false based on whether the tab
+// was actually closable or not. 
 tabMan.prototype.closeTabNum = function(n) {
-	var oldActiveIndex = this.activeIndex;
-	var newActiveIndex;
 	var tab = this.tabs[n];
-	tab.close();
-	this.tabs.splice(n, 1);
-	// Case where we're removing the active tab
-	if (n == oldActiveIndex) {
-		if (oldActiveIndex >= numTabs) {
-			newActiveIndex = numTabs - 1;
-		} else {
-			newActiveIndex = oldActiveIndex;
-			this.tabs[newActiveIndex].makeActive();
+	if (tab.closable) {
+		var oldActiveIndex = this.activeIndex;
+		var newActiveIndex;
+		tab.close();
+		this.tabs.splice(n, 1);
+		this.numTabs = this.tabs.length;
+		// Case where we're removing the active tab
+		if (n == oldActiveIndex) {
+			if (oldActiveIndex >= this.numTabs) {
+				newActiveIndex = this.numTabs - 1;
+			} else {
+				newActiveIndex = oldActiveIndex;
+			};
+		} else if (n < oldActiveIndex) {
+			// case where the tab we're removing is before the active tab
+			newActiveIndex = oldActiveIndex - 1;
+		} else if (n > oldActiveIndex) {
+			// Case where the tab we're removing is after the active tab
+			// Nothing to do here
 		};
-	} else if (n < oldActiveIndex) {
-		// case where the tab we're removing is before the active tab
-		newActiveIndex = oldActiveIndex - 1;
-	} else if (n > oldActiveIndex) {
-		// Case where the tab we're removing is after the active tab
-		// Nothing to do here
+		this.tabs[newActiveIndex].makeActive();
+		this.activeTab = this.tabs[newActiveIndex];
+		this.activeIndex = newActiveIndex;
+		this.updateChanLabel();
+		this.updateBar();
+		return true;
+	} else {
+		return false;
 	};
-	this.numTabs = this.tabs.length;
-
-
-			
 };
 
 // Update the 'send a message to <channel>' label
@@ -342,6 +368,7 @@ var friendsTab = function friendsTab(screen, flData, sendMessageFunc) {
 	this.screen.append(this.tab);
 	this.screen.render();
 	this.sendFunc = sendMessageFunc;
+	this.closable = false;
 
 };
 friendsTab.prototype.makeActive = function() {
