@@ -5,33 +5,32 @@ Micro Dota 2 client using node-dota2
 
 To get it up and running, follow these steps:
 
-1. touch sentry (create a blank file called sentry)
-2. Rename config.js.example to config.js. 
-3. Configure your chat channels and other options in config.js. 
-4. Rename steamcreds.js.example to steamcreds.js. 
-5. Put your username, password, and desired display name in steamcreds.js. 
+1. Rename config.js.example to config.js. 
+2. Configure your chat channels and other options in config.js. 
+3. Rename steamcreds.js.example to steamcreds.js. 
+4. Put your username and password in steamcreds.js. If you want it to automatically set your display name, you can uncomment that line. 
 
 If you use steam guard, you will need to follow these steps:
 
-1. rm sentry ; touch sentry
-2. Run the program, wait for the steam guard email, then put the steam guard code in steamcreds.js. 
-3. Run the program normally, it should work. 
+1. Run the program, wait for the steam guard email, then put the steam guard code in steamcreds.js (uncomment the line).  
+2. Run the program normally, it should work. If it doesn't, comment out the steam guard line and delete sentry. 
 
 ## Use 
 
-Run 'node chat.js' to run the program. 
-^P/^N go to the prev/next tab, ^C quits, and ^X displays a help message. Mousewheel up/down scrolls the current chat window up/down. 
+Run 'node chat.js' to run the program.
+
+^P/^N go to the prev/next tab, ^C quits, and ^X displays a help message. Mousewheel up/down and ^E/^Y scrolls the current chat window up/down.
+
+The two default tabs are the system log tab and the friends list. You can select a friend from the friends list and press enter to start steam messaging them. 
 
 ## Requirements 
 
-npm install should take care of the requirements, but you need to have node .10 (Doesn't work with .12). node-dota2 isn't updated for node .12 yet. 
+Currently, you'll need node .12. 
+Use npm install to automatically install most of the requirements. 
+You'll need to manually replace the node-dota2 that gets installed (`node_modules/dota2`) with the node-steam-1.1.0 branch. 
 
 ## Common problems 
 
-* Something about a module not self-registering: you have node >=0.12. See the requirements section. 
-* Some crypto function not found: you have node-steam > 0.6.7. 
-* Login failures: Keep trying the instructions above. Also keep in mind you can't have real dota open at the same time. 
-* I can't scroll with the mouse: Your terminal program might not have mouse support. If the scroll wheel works in vim but not here, then file a bug. 
-* No such file or directory 'sentry': touch sentry
+* Login failures: Keep trying the instructions above. Also keep in mind you can't have real dota open at the same time on that account.  
+* I can't scroll with the mouse: OS X's terminal doesn't send the right codes for scrolling. For any other terminals, make sure mouse scrolling works in vim. If it works there but not here, file a bug. 
 * Other stuff: File a bug. 
-
