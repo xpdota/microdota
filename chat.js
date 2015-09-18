@@ -266,7 +266,7 @@ var sendDotaMessage = function sendMessage(channel, data) {
 	dota.sendMessage(channel, data);
 };
 var sendSteamMessage = function sendSteamMessage(id, data) {
-	sc.sendMessage(id, data);
+	SteamFriends.sendMessage(id, data);
 };
 
 // ^U functionality
@@ -435,9 +435,9 @@ var onScreenResize = function onScreenResize() {
 // When we get 'relationships', it means node-steam has filled in
 // the 'friends' property. 
 var onSteamRelationships = function onSteamRelationships() {
-	steamFriends = sc.friends;
+	steamFriends = SteamFriends.friends;
 	var numFriends = Object.keys(steamFriends).length;
-	steamUsers = sc.users;
+	steamUsers = SteamFriends.personaStates;
 	var numUsers = Object.keys(steamFriends).length;
 
 	// We need to combine these two data structures into one
@@ -484,7 +484,7 @@ var onSteamUser = function onSteamUser(newUserData) {
 	//writeSystemMsg('Got user data: ' + JSON.stringify(newUserData));
 	var uid = newUserData.friendid;
 	if (uid == ownSteamId) {
-		updateOwnName(newUserData.playerName);
+		updateOwnName(newUserData.player_name);
 	};
 	steamUsers[uid] = newUserData;
 	makeFlDataEntry(uid);
@@ -498,7 +498,7 @@ var updateOwnName = function updateOwnName(newName) {
 
 var determineOwnName = function determineOwnName() {
 	if (ownSteamId in steamUsers) {
-		updateOwnName(steamUsers[ownSteamId].playerName);
+		updateOwnName(steamUsers[ownSteamId].player_name);
 	};
 };
 
@@ -516,13 +516,11 @@ var updateFriendsTab = function updateFriendsTab() {
 
 // Create a tab for steam messaging
 var createSteamMsgTab = function createSteamMsgTab(id) {
-	//setDebugInfo(id);
-	//setDebugInfo(JSON.stringify(steamUsers[id]));
 	var sendFunc = function sendFunc(msg) {
 		this.addMsg(ownName, msg, true);
 		sendSteamMessage(id, msg);
 	}
-	var newTab = new chatTab(screen, 'Steam:' + id, steamUsers[id].playerName, sendFunc);
+	var newTab = new chatTab(screen, 'Steam:' + id, steamUsers[id].player_name, sendFunc);
 	mainTabBar.addTab(newTab);
 	return newTab;
 };
@@ -546,10 +544,8 @@ var findMsgTab = function findMsgTab(id, switchTo) {
 // Create a tab for messaging if it doesn't exist. 
 // Switch to it. 
 var createOrSwitchMsgTab = function createOrSwitchMsgTab(id) {
-	setDebugInfo('Creating or switching to tab for id ' + id);
 	var found = findMsgTab(id, true).found;
 	if (!found) {
-		setDebugInfo('creating');
 		createSteamMsgTab(id);
 		findMsgTab(id, true);
 	};
@@ -567,7 +563,7 @@ var onSteamMsg = function onSteamMsg(id, message, type) {
 		tab = createSteamMsgTab(id);
 	};
 	var userEntry = steamUsers[id];
-	var name = userEntry.playerName;
+	var name = userEntry.player_name;
 	tab.addMsg(name, message, false);
 	mainTabBar.updateBar();
 };
@@ -599,7 +595,9 @@ var onDotaProfile = function onDotaProfile(id, profileData) {
 //var sentry = fs.readFileSync('sentry');
 //if (sentry.length) logOnDetails.shaSentryfile = sentry;
 writeSystemMsg('Logging on to Steam...');
-var steamUser = new Steam.SteamUser(sc);
+var SteamUser = new Steam.SteamUser(sc);
+var SteamFriends = new Steam.SteamFriends(sc);
+
 var logOnDetails = {
 	account_name: steamcreds.steam_user,
 	password: steamcreds.steam_pass,
@@ -608,11 +606,13 @@ if (steamcreds.steam_guard_code)
 	logOnDetails.auth_code = steamcreds.steam_guard_code;
 var sentry;
 try {
-	fs.readFileSync('sentry');
+	writeSystemMsg('Attempting to read sentry file');
+	sentry = fs.readFileSync('sentry');
+	if (sentry.length)
+		writeSystemMsg('Reading from sentry file');
+		logOnDetails.sha_sentryfile = sha1(sentry);
 } catch (e) {
 };
-if (sentry.length)
-	logOnDetails.sha_sentryfile = sha1(sentry);
 
 
 // Callback when the steam connection is ready
@@ -621,37 +621,37 @@ var onSteamLogOn = function onSteamLogOn(logonResp){
 	if (logonResp.eresult == Steam.EResult.OK) {
 		// Set display name
 		ownSteamId = sc.steamID;
-		//sc.setPersonaState(steam.EPersonaState.Online);
+		SteamFriends.setPersonaState(Steam.EPersonaState.Online);
 		setTimeout(determineOwnName, 4000);
 		writeSystemMsg('Your steam ID: ' + ownSteamId);
-		//ownName = sc.users[ownSteamId].playerName;
 		if (steamcreds.steam_name) {
-		//	sc.setPersonaName(steamcreds.steam_name);
+			SteamFriends.setPersonaName(steamcreds.steam_name);
 		};
 		writeSystemMsg('Logged on to Steam');
-		//sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
-		//sc.on('friend', onSteamFriend);
-		//sc.on('user', onSteamUser);
-		//sc.on('friendMsg', onSteamMsg);
+		SteamFriends.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
+		SteamFriends.on('friend', onSteamFriend);
+		SteamFriends.on('personaState', onSteamUser);
+		SteamFriends.on('friendMsg', onSteamMsg);
 		//sc.on('richPresence', onSteamRP);
 		// Start node-dota2
-		//dota.launch();
-		//dota.on('ready', onDotaReady);
-		//dota.on('unready', onDotaUnready);
-		//dota.on('chatMessage', onDotaChatMessage);
-		//dota.on('profileData', onDotaProfile);
+		dota.launch();
+		dota.on('ready', onDotaReady);
+		dota.on('unready', onDotaUnready);
+		dota.on('chatMessage', onDotaChatMessage);
+		dota.on('profileData', onDotaProfile);
 	} else {
 		sc.disconnect();
 		writeSystemMsg('Disconnected from steam');
 	};
 };
 
-steamUser.on('updateMachineAuth', function(machineAuth, callback) {
-	util.log('Got sentry');
+SteamUser.on('updateMachineAuth', function(machineAuth, callback) {
+	writeSystemMsg('Got sentry');
 	fs.writeFileSync('sentry', machineAuth.bytes);
 	var sha = sha1(machineAuth.bytes);
 	callback({sha_file: sha});
 });
+
 
 sc.on('servers', function(servers) {
 	writeSystemMsg('Got Steam servers');
@@ -662,10 +662,7 @@ sc.on('servers', function(servers) {
 // Delay this since we want users to fill as well. 
 sc.connect();
 sc.on('connected', function() {
-	steamUser.logOn({
-		account_name: steamcreds.steam_user,
-		password: steamcreds.steam_pass,
-	});
+	SteamUser.logOn(logOnDetails);
 });
 sc.on('logOnResponse', onSteamLogOn);
 

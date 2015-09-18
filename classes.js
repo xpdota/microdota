@@ -466,12 +466,14 @@ personaStateNames = {
 var friendEntry = function friendEntry(id, flEntry) {
 	this.flEntry = flEntry;
 	this.id = id;
-	this.name = flEntry.playerName;
-	this.gameName = flEntry.gameName;
+	this.name = flEntry.player_name;
+	this.gameName = flEntry.game_name;
 	this.isActive = false;
-	this.onlineStatus = flEntry.personaState;
+	this.onlineStatus = flEntry.persona_state;
 	this.statusText = personaStateNames[this.onlineStatus];
-	this.rpText = flEntry.rpString || false;
+	// RIP
+	this.rpText = false;
+	//this.rpText = flEntry.rpString || false;
 };
 friendEntry.prototype.makeActive = function() {
 	this.isActive = true;
