@@ -489,6 +489,17 @@ personaStateNames = {
 	6: 'Looking to Play',
 	7: 'Max' // No idea what this is
 };
+friendStatusNames = {
+	0: 'Not Friends',
+	1: 'Blocked',
+	2: 'Pending',
+	3: 'Friends',
+	4: 'Invited',
+	5: 'Ignored',
+	6: 'Ignored Friend',
+	7: 'Suggested Friend',
+	8: 'Friends List Full',
+};
 
 var friendEntry = function friendEntry(id, flEntry) {
 	this.flEntry = flEntry;
@@ -498,6 +509,8 @@ var friendEntry = function friendEntry(id, flEntry) {
 	this.isActive = false;
 	this.onlineStatus = flEntry.persona_state;
 	this.statusText = personaStateNames[this.onlineStatus];
+	this.friendStatus = flEntry.friendStatus || 0;
+	this.friendStatusText = friendStatusNames[this.friendStatus];
 	// RIP
 	this.rpText = false;
 	//this.rpText = flEntry.rpString || false;
@@ -513,7 +526,7 @@ friendEntry.prototype.toMenuString = function() {
 	out += this.name;
 	var statusCode = this.onlineStatus;
 	// Only display status if it's something other than "online"
-	var needStatus = (statusCode != 1);
+	var needStatus = (statusCode != 1 && statusCode != undefined);
 	var auxParts = [];
 	if (this.gameName) {
 		auxParts.push('Playing ' + this.gameName);
@@ -521,9 +534,13 @@ friendEntry.prototype.toMenuString = function() {
 	if (needStatus) {
 		auxParts.push(this.statusText);
 	};
-	if (this.rpText) {
+	/*if (this.rpText) {
 		auxParts.push(this.rpText);
+	};*/
+	if (this.friendStatus != 3) {
+		auxParts.push(this.friendStatusText);
 	};
+		
 	if (auxParts.length > 0) {
 		var auxText = auxParts.join(', ');
 		out += ' (' + auxText + ')';
@@ -531,7 +548,16 @@ friendEntry.prototype.toMenuString = function() {
 	// Do tags
 	var openTag = '';
 	var closeTag = '';
-	if (this.gameName == 'Dota 2') {
+	if (this.friendStatus == 2) {
+		openTag = '{yellow-fg}';
+		closeTag = '{/yellow-fg}';
+	} else if (this.friendStatus == 4) {
+		openTag = '{magenta-fg}';
+		closeTag = '{/magenta-fg}';
+	} else if (this.friendStatus == 1 || this.friendStatus == 5) {
+		openTag = '{red-fg}';
+		closeTag = '{/red-fg}';
+	} else if (this.gameName == 'Dota 2') {
 		openTag = '{cyan-fg}';
 		closeTag = '{/cyan-fg}';
 	} else if (this.gameName) {
