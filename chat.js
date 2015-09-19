@@ -14,15 +14,14 @@
 
 
 // Steam/dota stuff
-var steam = require('steam');
+var Steam = require('steam');
 var util = require('util');
 var fs = require('fs');
 
 var Dota2 = require('dota2');
 var steamcreds = require('./steamcreds.js');
-var sc = new steam.SteamClient();
+var sc = new Steam.SteamClient();
 var dota = new Dota2.Dota2Client(sc, true);
-global.steamcreds = require('./steamcreds');
 var config = require('./config');
 var richPresence = require('./richPresence');
 var rpToText = richPresence.rpToText;
@@ -34,6 +33,10 @@ var defaultTab = config.defaultChan;
 var ownName = '';
 var ownSteamId = '';
 var cmdLeader = config.cmdLeader;
+
+// Variable that will hold the user's steam guard code if they
+// have to enter it. 
+var enteredSteamGuardCode = '';
 
 // TODO: just get your name from steam itself so you can 
 // tell this to not touch your name
@@ -61,16 +64,13 @@ sc.debug = false;
 dota.debug = false;
 
 // Boilerplate stuff
-onSteamSentry = function onSteamSentry(sentry) {
-	//util.log("Received sentry.");
-	writeSystemMsg('Got Steam sentry');
-	require('fs').writeFileSync('sentry', sentry);
+var sha1 = function sha1(data) {
+	var crypto = require('crypto');
+	var shasum = crypto.createHash('sha1');
+	shasum.update(data);
+	return shasum.digest();
 };
-onSteamServers = function onSteamServers(servers) {
-	writeSystemMsg('Got Steam servers');
-	//util.log("Received servers.");
-	fs.writeFile('servers', JSON.stringify(servers));
-};
+	
 
 // Dota connection is ready
 var onDotaReady = function onDotaReady() {
@@ -127,72 +127,14 @@ var onDotaChatMessage = function onDotaChatMessage(channel, personaName, message
 
 };
 
-var blessed = require('blessed');
-var screen = blessed.screen({
-	smartCSR: true
-});
-
-// Terminal title
-screen.title = 'dChat';
-
-// Where you type messages
-var textEntryBox = blessed.Textbox({
-	inputOnFocus: true,
-	top: '100%-2',
-	left: 2,
-	width: '100%',
-	height: 1,
-	//keys: true,
-	/*border: {
-		fg: 'blue',
-	},*/
-});
-
-// Line below the text entry box
-// setDebugInfo is a global that allows you to put stuff here
-// for easy use. 
-var debugBox = new blessed.text({
-	top: '100%-1',
-	left: 2,
-	width: '100%',
-	height: 1,
-});
-
-// Line above the text entry box which shows the channel you're about to send to
-var chanLabel = new blessed.text({
-	top: '100%-3',
-	left: 2,
-	width: '100%',
-	height: 1,
-});
-
-// Tab bar, handled by tabMan
-// TODO: figure out what to do with the line below it (or remove that)
-var tabBar = new blessed.box({
-	top: 'top',
-	left: 1,
-	width: '100%-2',
-	height: 1,
-	tags: true,
-});
-
-var dividerBar = new blessed.box({
-	top: '100%-4',
-	left:0,
-	width: '100%',
-	height: 1,
-	style: {
-		fg: 'black',
-		bg: 'blue',
-	},
-});
-
-// Little 'Press Ctrl-X for help' label
-// TODO
-
-// This text should never actually appear. 
-// If it does, it's a bug. 
-chanLabel.content = 'default chanLabel content';
+// Moved ui elements to a new file
+var uielements = require('./uielements');
+textEntryBox = uielements.textEntryBox;
+debugBox = uielements.debugBox;
+chanLabel = uielements.chanLabel;
+tabBar = uielements.tabBar;
+dividerBar = uielements.dividerBar;
+screen = uielements.screen;
 
 // sysTab is the <system> tab
 // mainTabBar is the tab manager, not the tab bar itself
@@ -202,14 +144,9 @@ sysTab.sendInput = function sendInput(entryObj) {
 		writeSystemMsg('You can\'t write messages here');
 	};
 };
-var mainTabBar = new tabMan(sysTab, chanLabel, tabBar, screen);
+sysTab.closable = false;
+var mainTabBar = new tabMan(sysTab, chanLabel, tabBar, screen, dividerBar);
 
-// Put stuff on the screen
-screen.append(debugBox);
-screen.append(textEntryBox);
-screen.append(chanLabel);
-screen.append(tabBar);
-screen.append(dividerBar);
 // textEntryBox needs to pretty much always have focus. 
 // It gets refocused automatically after sending a message. 
 textEntryBox.focus();
@@ -270,7 +207,7 @@ var sendDotaMessage = function sendMessage(channel, data) {
 	dota.sendMessage(channel, data);
 };
 var sendSteamMessage = function sendSteamMessage(id, data) {
-	sc.sendMessage(id, data);
+	SteamFriends.sendMessage(id, data);
 };
 
 // ^U functionality
@@ -355,8 +292,27 @@ var joinCmd = function joinCmd(fullCmd, argv) {
 
 var profileCmd = function profileCmd(fullCmd, argv) {
 	var playerId = parseInt(argv[1])
-	dota.profileRequest(playerId);
+	dota.requestProfile(playerId);
 	writeSystemMsg('Requesting profile for ' + playerId);
+};
+
+var steamGuardCmd = function steamGuardCmd(fullCmd, argv) {
+	var sgCode = argv[1];
+	enteredSteamGuardCode = sgCode;
+	writeSystemMsg('Your steam guard code has been entered. ');
+	writeSystemMsg('Now use /connect to try connecting again. ');
+};
+
+var connectCmd = function connectCmd(fullCmd, argv) {
+	writeSystemMsg('(Re)connecting Steam...');
+	sc.connect();
+};
+
+// Close current tab, if possible. Note that this doesn't necessarily
+// do anything other than close the tab. You'll still be in a chat channel if
+// you close it, there isn't a /part equivalent yet. 
+var closeCmd = function closeCmd(fullCmd, argv) {
+	mainTabBar.closeCurrentTab();
 };
 	
 // Mapping for commands. 
@@ -368,6 +324,9 @@ var cmdMap = {
 	echo: echoCmd,
 	join: joinCmd,
 	profile: profileCmd,
+	sg: steamGuardCmd,
+	connect: connectCmd,
+	close: closeCmd,
 };
 
 // Controls
@@ -415,14 +374,9 @@ var scrollBy = function scrollBy(n) {
 // Put 'new messages below' text in divider bar if the channel
 // has received messages while scrolled up. 
 var updateDividerBar = function updateDividerBar() {
-	var msgBelow = mainTabBar.activeTab.msgBelow;
-	if (msgBelow) {
-		dividerBar.content = '   ↓ Scroll down to see new messages ↓';
-	} else {
-		dividerBar.content = '';
-	};
-	screen.render();
+	mainTabBar.updateDividerBar();
 };
+
 var onScreenResize = function onScreenResize() {
 	// Update tab bar
 	mainTabBar.updateBar();
@@ -439,9 +393,9 @@ var onScreenResize = function onScreenResize() {
 // When we get 'relationships', it means node-steam has filled in
 // the 'friends' property. 
 var onSteamRelationships = function onSteamRelationships() {
-	steamFriends = sc.friends;
+	steamFriends = SteamFriends.friends;
 	var numFriends = Object.keys(steamFriends).length;
-	steamUsers = sc.users;
+	steamUsers = SteamFriends.personaStates;
 	var numUsers = Object.keys(steamFriends).length;
 
 	// We need to combine these two data structures into one
@@ -488,7 +442,7 @@ var onSteamUser = function onSteamUser(newUserData) {
 	//writeSystemMsg('Got user data: ' + JSON.stringify(newUserData));
 	var uid = newUserData.friendid;
 	if (uid == ownSteamId) {
-		updateOwnName(newUserData.playerName);
+		updateOwnName(newUserData.player_name);
 	};
 	steamUsers[uid] = newUserData;
 	makeFlDataEntry(uid);
@@ -502,7 +456,7 @@ var updateOwnName = function updateOwnName(newName) {
 
 var determineOwnName = function determineOwnName() {
 	if (ownSteamId in steamUsers) {
-		updateOwnName(steamUsers[ownSteamId].playerName);
+		updateOwnName(steamUsers[ownSteamId].player_name);
 	};
 };
 
@@ -520,13 +474,11 @@ var updateFriendsTab = function updateFriendsTab() {
 
 // Create a tab for steam messaging
 var createSteamMsgTab = function createSteamMsgTab(id) {
-	//setDebugInfo(id);
-	//setDebugInfo(JSON.stringify(steamUsers[id]));
 	var sendFunc = function sendFunc(msg) {
 		this.addMsg(ownName, msg, true);
 		sendSteamMessage(id, msg);
 	}
-	var newTab = new chatTab(screen, 'Steam:' + id, steamUsers[id].playerName, sendFunc);
+	var newTab = new chatTab(screen, 'Steam:' + id, steamUsers[id].player_name, sendFunc);
 	mainTabBar.addTab(newTab);
 	return newTab;
 };
@@ -550,10 +502,8 @@ var findMsgTab = function findMsgTab(id, switchTo) {
 // Create a tab for messaging if it doesn't exist. 
 // Switch to it. 
 var createOrSwitchMsgTab = function createOrSwitchMsgTab(id) {
-	setDebugInfo('Creating or switching to tab for id ' + id);
 	var found = findMsgTab(id, true).found;
 	if (!found) {
-		setDebugInfo('creating');
 		createSteamMsgTab(id);
 		findMsgTab(id, true);
 	};
@@ -571,7 +521,7 @@ var onSteamMsg = function onSteamMsg(id, message, type) {
 		tab = createSteamMsgTab(id);
 	};
 	var userEntry = steamUsers[id];
-	var name = userEntry.playerName;
+	var name = userEntry.player_name;
 	tab.addMsg(name, message, false);
 	mainTabBar.updateBar();
 };
@@ -599,50 +549,88 @@ var onDotaProfile = function onDotaProfile(id, profileData) {
 	fs.writeFile(fileName, profileString);
 	//writeSystemMsg('Profile ' + id + ': ' + JSON.stringify(profileData));
 };
-
-// Steam login stuff
-// Login, only passing authCode if it exists
-var logOnDetails = {
-	'accountName': steamcreds.steam_user,
-	'password': steamcreds.steam_pass,
-};
-if (steamcreds.steam_guard_code) logOnDetails.authCode = steamcreds.steam_guard_code;
-var sentry = fs.readFileSync('sentry');
-if (sentry.length) logOnDetails.shaSentryfile = sentry;
+//if (steamcreds.steam_guard_code) logOnDetails.authCode = steamcreds.steam_guard_code;
+//var sentry = fs.readFileSync('sentry');
+//if (sentry.length) logOnDetails.shaSentryfile = sentry;
 writeSystemMsg('Logging on to Steam...');
+var SteamUser = new Steam.SteamUser(sc);
+var SteamFriends = new Steam.SteamFriends(sc);
 
+
+var getLogOnDetails = function getLogOnDetails() {
+	var logOnDetails = {
+		account_name: steamcreds.steam_user,
+		password: steamcreds.steam_pass,
+	};
+	if (enteredSteamGuardCode)
+		logOnDetails.auth_code = enteredSteamGuardCode;
+	var sentry;
+	try {
+		writeSystemMsg('Attempting to read sentry file');
+		sentry = fs.readFileSync('sentry');
+		if (sentry.length)
+			writeSystemMsg('Reading from sentry file');
+			logOnDetails.sha_sentryfile = sha1(sentry);
+	} catch (e) {
+	};
+	return logOnDetails;
+};
 
 // Callback when the steam connection is ready
-var onSteamLogOn = function onSteamLogOn(){
-	// Set display name
-	ownSteamId = sc.steamID;
-	sc.setPersonaState(steam.EPersonaState.Online);
-	setTimeout(determineOwnName, 4000);
-	writeSystemMsg('Your steam ID: ' + ownSteamId);
-	//ownName = sc.users[ownSteamId].playerName;
-	if (steamcreds.steam_name) {
-		sc.setPersonaName(steamcreds.steam_name);
+var onSteamLogOn = function onSteamLogOn(logonResp){
+	if (logonResp.eresult == Steam.EResult.OK) {
+		// Set display name
+		ownSteamId = sc.steamID;
+		SteamFriends.setPersonaState(Steam.EPersonaState.Online);
+		setTimeout(determineOwnName, 4000);
+		writeSystemMsg('Your steam ID: ' + ownSteamId);
+		if (steamcreds.steam_name) {
+			SteamFriends.setPersonaName(steamcreds.steam_name);
+		};
+		writeSystemMsg('Logged on to Steam');
+		SteamFriends.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
+		SteamFriends.on('friend', onSteamFriend);
+		SteamFriends.on('personaState', onSteamUser);
+		SteamFriends.on('friendMsg', onSteamMsg);
+		//sc.on('richPresence', onSteamRP);
+		// Start node-dota2
+		dota.launch();
+		dota.on('ready', onDotaReady);
+		dota.on('unready', onDotaUnready);
+		dota.on('chatMessage', onDotaChatMessage);
+		dota.on('profileData', onDotaProfile);
+	} else if (logonResp.eresult == 63) {
+		sc.disconnect();
+		var emailDomain = logonResp.email_domain;
+		writeSystemMsg('Check your email address at ' + emailDomain + ' for a steam guard code. ');
+		writeSystemMsg('Then, enter it with /sg <code>');
+	} else {
+		sc.disconnect();
+		writeSystemMsg('Logon failed with error ' + logonResp.eresult + '.' );
+		writeSystemMsg('Raw logon response: ' + JSON.stringify(logonResp));
+		writeSystemMsg('Please check your username and password. If everything appears to be correct, please file a bug and include the above response. ');
+		writeSystemMsg('In addition, check your email for a Steam Guard code. If you got one, enter it with /sg <code>');
 	};
-	writeSystemMsg('Logged on to Steam');
-	sc.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
-	sc.on('friend', onSteamFriend);
-	sc.on('user', onSteamUser);
-	sc.on('friendMsg', onSteamMsg);
-	sc.on('richPresence', onSteamRP);
-	// Start node-dota2
-	dota.launch();
-	dota.on('ready', onDotaReady);
-	dota.on('unready', onDotaUnready);
-	dota.on('chatMessage', onDotaChatMessage);
-	dota.on('profileData', onDotaProfile);
 };
-sc.on('loggedOn', onSteamLogOn);
-sc.on('sentry', onSteamSentry);
-sc.on('servers', onSteamServers);
+
+SteamUser.on('updateMachineAuth', function(machineAuth, callback) {
+	writeSystemMsg('Got sentry');
+	fs.writeFileSync('sentry', machineAuth.bytes);
+	var sha = sha1(machineAuth.bytes);
+	callback({sha_file: sha});
+});
 
 
+sc.on('servers', function(servers) {
+	writeSystemMsg('Got Steam servers');
+	fs.writeFile('servers', JSON.stringify(servers));
+});
 // TODO: Catch errors from this and alert the user in a more
 // friendly way than an error number and traceback.  
 // Delay this since we want users to fill as well. 
-sc.logOn(logOnDetails);
+sc.connect();
+sc.on('connected', function() {
+	SteamUser.logOn(getLogOnDetails());
+});
+sc.on('logOnResponse', onSteamLogOn);
 
