@@ -1,15 +1,18 @@
 /* TODO list:
 	Support marking messages that are scrolled out of view as unread
 	This will also require an active+unread tab stats (maybe black fg red bg)
-	Joinining on the fly
-	Friends list
+	Temp hack:
+		Added a "scroll down for more messages" banner across the divier
+		This has a bug in that it doesn't seem to work on the system tab. 
 	Profiles
+		In progress
 	Make it not mess up when resized
 	OS X terminal scrolling
 		Apparently, it sends ^[OA and ^[OB for mousewheel up/down
 	Emotes
 		Might be hard, while an emote is just a U+E0xx glyph, simply
-		sending that doesn't seem to work. 
+		sending that doesn't seem to work, but that's probably because I 
+		don't have any emotes on the test account. 
 */
 
 
@@ -25,6 +28,7 @@ var dota = new Dota2.Dota2Client(sc, true);
 var config = require('./config');
 var richPresence = require('./richPresence');
 var rpToText = richPresence.rpToText;
+var steamFuncs = require('./steamFuncs');
 
 // Pull stuff from config files
 var chatChannels = config.channels;
@@ -33,15 +37,6 @@ var defaultTab = config.defaultChan;
 var ownName = '';
 var ownSteamId = '';
 var cmdLeader = config.cmdLeader;
-
-// Variable that will hold the user's steam guard code if they
-// have to enter it. 
-var enteredSteamGuardCode = '';
-
-// TODO: just get your name from steam itself so you can 
-// tell this to not touch your name
-//global.ownSteamName = ownName;
-
 
 // These can be used by whatever to see if 
 // the process of logging on and joining channels is done. 
@@ -63,14 +58,6 @@ var friendsTabClass = classes.friendsTab;
 sc.debug = false;
 dota.debug = false;
 
-// Boilerplate stuff
-var sha1 = function sha1(data) {
-	var crypto = require('crypto');
-	var shasum = crypto.createHash('sha1');
-	shasum.update(data);
-	return shasum.digest();
-};
-	
 
 // Dota connection is ready
 var onDotaReady = function onDotaReady() {
@@ -193,7 +180,6 @@ textEntryBox.on('submit', function(data) {
 	if (entryObj.isCmd) {
 		processCmd(entryObj.cmd);
 	};
-	// TODO: move system channel rejection elsewhere
 	// Clear the box, redraw the screen to reflect that. 
 	// Also refocus it. 
 	textEntryBox.clearValue();
@@ -223,10 +209,9 @@ var deleteWordTextBox = function deleteWordTextBox() {
 };
 
 /* TODO: 
-	^U, ^K
-	^E, ^Y
 	Nav cluster keys
 	Text editing and navigation in general
+	Command history
 */
 
 // Write stuff specifically to the current tab
@@ -249,6 +234,7 @@ global.setDebugInfo = setDebugInfo;
 var writeSystemMsg = function writeSystemMsg(text) {
 	sysTab.append('<system> ' + text + '\n');
 	mainTabBar.updateBar();
+	updateDividerBar();
 };
 global.writeSystemMsg = writeSystemMsg;
 
@@ -298,7 +284,7 @@ var profileCmd = function profileCmd(fullCmd, argv) {
 
 var steamGuardCmd = function steamGuardCmd(fullCmd, argv) {
 	var sgCode = argv[1];
-	enteredSteamGuardCode = sgCode;
+	steamFuncs.setSteamGuardCode(sgCode);
 	writeSystemMsg('Your steam guard code has been entered. ');
 	writeSystemMsg('Now use /connect to try connecting again. ');
 };
@@ -557,25 +543,6 @@ var SteamUser = new Steam.SteamUser(sc);
 var SteamFriends = new Steam.SteamFriends(sc);
 
 
-var getLogOnDetails = function getLogOnDetails() {
-	var logOnDetails = {
-		account_name: steamcreds.steam_user,
-		password: steamcreds.steam_pass,
-	};
-	if (enteredSteamGuardCode)
-		logOnDetails.auth_code = enteredSteamGuardCode;
-	var sentry;
-	try {
-		writeSystemMsg('Attempting to read sentry file');
-		sentry = fs.readFileSync('sentry');
-		if (sentry.length)
-			writeSystemMsg('Reading from sentry file');
-			logOnDetails.sha_sentryfile = sha1(sentry);
-	} catch (e) {
-	};
-	return logOnDetails;
-};
-
 // Callback when the steam connection is ready
 var onSteamLogOn = function onSteamLogOn(logonResp){
 	if (logonResp.eresult == Steam.EResult.OK) {
@@ -613,24 +580,10 @@ var onSteamLogOn = function onSteamLogOn(logonResp){
 	};
 };
 
-SteamUser.on('updateMachineAuth', function(machineAuth, callback) {
-	writeSystemMsg('Got sentry');
-	fs.writeFileSync('sentry', machineAuth.bytes);
-	var sha = sha1(machineAuth.bytes);
-	callback({sha_file: sha});
-});
-
-
-sc.on('servers', function(servers) {
-	writeSystemMsg('Got Steam servers');
-	fs.writeFile('servers', JSON.stringify(servers));
-});
-// TODO: Catch errors from this and alert the user in a more
-// friendly way than an error number and traceback.  
-// Delay this since we want users to fill as well. 
+SteamUser.on('updateMachineAuth', steamFuncs.onUpdateMachineAuth);
+sc.on('servers', steamFuncs.onSteamServers);
 sc.connect();
 sc.on('connected', function() {
-	SteamUser.logOn(getLogOnDetails());
+	SteamUser.logOn(steamFuncs.getLogOnDetails());
 });
 sc.on('logOnResponse', onSteamLogOn);
-
