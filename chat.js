@@ -1,4 +1,4 @@
-/* TODO list:
+/* Todo list:
 	Support marking messages that are scrolled out of view as unread
 	This will also require an active+unread tab stats (maybe black fg red bg)
 	Temp hack:
@@ -96,7 +96,7 @@ var joinChannel = function joinChannel(chanName) {
 
 var onDotaChatMessage = function onDotaChatMessage(channel, personaName, message, chatObj){
 	// extra stuff we can get from chatObj
-	var uid = chatObj.accountId;
+	var id = chatObj.accountId;
 	// Get the tab object that corresponds to the channel of the message
 	// we just received. 
 	var chatBox = mainTabBar.getChanTab(channel);
@@ -396,12 +396,16 @@ var onSteamRelationships = function onSteamRelationships() {
 };
 
 // Copy all props so we have a more independent copy of the data
-var makeFlDataEntry = function makeFlDataEntry(uid) {
-	flData[uid] = {};
-	flData[uid]['friendStatus'] = steamFriends[uid];
-	var userObj = steamUsers[uid];
+var makeFlDataEntry = function makeFlDataEntry(id) {
+	var flObj = {};
+	flData[id] = flObj;
+	flObj['friendStatus'] = steamFriends[id];
+	var userObj = steamUsers[id];
 	for (prop in userObj) {
-		flData[uid][prop] = userObj[prop];
+		flObj[prop] = userObj[prop];
+	};
+	if (id == ownSteamId) {
+		flObj.isYou = true;
 	};
 };
 
@@ -430,12 +434,12 @@ var onSteamFriend = function onSteamFriend(friend, relation) {
 // about new user data. 
 var onSteamUser = function onSteamUser(newUserData) {
 	//writeSystemMsg('Got user data: ' + JSON.stringify(newUserData));
-	var uid = newUserData.friendid;
-	if (uid == ownSteamId) {
+	var id = newUserData.friendid;
+	if (id == ownSteamId) {
 		updateOwnName(newUserData.player_name);
 	};
-	steamUsers[uid] = newUserData;
-	makeFlDataEntry(uid);
+	steamUsers[id] = newUserData;
+	makeFlDataEntry(id);
 	updateFriendsTab();
 };
 
@@ -591,3 +595,8 @@ sc.on('connected', function() {
 	SteamUser.logOn(steamFuncs.getLogOnDetails());
 });
 sc.on('logOnResponse', onSteamLogOn);
+var onSteamError = function() {
+	sc.disconnect();
+	// TODO
+};
+sc.on('error', onSteamError);

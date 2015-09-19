@@ -535,6 +535,7 @@ var friendEntry = function friendEntry(id, flEntry) {
 	this.friendStatusText = friendStatusNames[this.friendStatus];
 	// RIP
 	this.rpText = false;
+	this.isYou = flEntry.isYou;
 	//this.rpText = flEntry.rpString || false;
 };
 friendEntry.prototype.makeActive = function() {
@@ -544,6 +545,8 @@ friendEntry.prototype.makeInactive = function() {
 	this.isActive = false;
 };
 friendEntry.prototype.getSortPos = function() {
+	if (this.isYou)
+		return -1;
 	// Blocked
 	if (this.friendStatus == 1)
 		return 6;
@@ -575,6 +578,9 @@ friendEntry.prototype.toMenuString = function() {
 	// Only display status if it's something other than "online"
 	var needStatus = (statusCode != 1 && statusCode != undefined);
 	var auxParts = [];
+	if (this.isYou) {
+		auxParts.push('You')
+	};
 	if (this.gameName) {
 		auxParts.push('Playing ' + this.gameName);
 	};
@@ -584,10 +590,9 @@ friendEntry.prototype.toMenuString = function() {
 	/*if (this.rpText) {
 		auxParts.push(this.rpText);
 	};*/
-	if (this.friendStatus != 3) {
+	if (this.friendStatus != 3 && !this.isYou) {
 		auxParts.push(this.friendStatusText);
 	};
-		
 	if (auxParts.length > 0) {
 		var auxText = auxParts.join(', ');
 		out += ' (' + auxText + ')';
