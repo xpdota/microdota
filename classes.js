@@ -421,18 +421,33 @@ friendsTab.prototype.updateFriendsList = function() {
 		id: false,
 		toMenuString: function() { return 'Friends list: '; },
 		makeActive: function() { this.isActive = true; },
-		makeInactive: function() {this.isActive = false; }
+		makeInactive: function() { this.isActive = false; },
+		getSortPos: function() { return -1; }
 	};
 	if (this.activeLine == 0) {
 		header.makeActive();
 	};
-	this.entries = [header];
+	unsorted = [header];
+	this.entries = [];
 	for (id in this.flData) {
 		var flObj = new friendEntry(id, this.flData[id]);
-		this.entries.push(flObj);
-		if (id == oldActiveId) {
+		unsorted.push(flObj);
+	};
+	var numPasses = 7;
+	for (pass = -1; pass < numPasses; pass++){
+		for (i = 0; i < unsorted.length; i++) {
+			var flObj = unsorted[i];
+			var sortPos = flObj.getSortPos();
+			if (pass == sortPos) {
+				this.entries.push(flObj);
+			};
+		};
+	};
+	for (i = 0; i < this.entries.length; i++) {
+		var flObj = this.entries[i];
+		if (flObj.id == oldActiveId) {
 			foundActiveId = true;
-			newActiveLine = this.entries.length - 1;
+			newActiveLine = i;
 			flObj.makeActive();
 		};
 	};
@@ -458,9 +473,16 @@ friendsTab.prototype.updateContent = function() {
 			content += line + '\n';
 		};
 	};
-	for (i = 0; i < numLines; i++) {
-		var flObj = this.entries[i];
-		addLine(flObj);
+	// Get the hacky sort order for friend list entries
+	var numPasses = 7;
+	for (pass = -1; pass < numPasses; pass++){
+		for (i = 0; i < numLines; i++) {
+			var flObj = this.entries[i];
+			var sortPos = flObj.getSortPos();
+			if (pass == sortPos) {
+				addLine(flObj)
+			};
+		};
 	};
 	// Update actual text box content and update the screen. 
 	this.tab.content = content;
@@ -520,6 +542,31 @@ friendEntry.prototype.makeActive = function() {
 };
 friendEntry.prototype.makeInactive = function() {
 	this.isActive = false;
+};
+friendEntry.prototype.getSortPos = function() {
+	// Blocked
+	if (this.friendStatus == 1)
+		return 6;
+	// Outgoing friend request
+	if (this.friendStatus == 4)
+		return 5;
+	// Incoming friend request
+	if (this.friendStatus == 2)
+		return 1;
+	// Playing dota
+	if (this.gameName == 'Dota 2')
+		return 0;
+	// Playing any game
+	if (this.gameName)
+		return 2;
+	// Online
+	if (this.onlineStatus > 1)
+		return 3;
+	// Offline
+	if (this.onlineStatus == 0)
+		return 4;
+	// Anything we missed
+	return 4;
 };
 friendEntry.prototype.toMenuString = function() {
 	var out = '';
