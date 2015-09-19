@@ -383,11 +383,15 @@ var onSteamRelationships = function onSteamRelationships() {
 	var numFriends = Object.keys(steamFriends).length;
 	steamUsers = SteamFriends.personaStates;
 	var numUsers = Object.keys(steamFriends).length;
+	// We need to combine these two data structures into one, and also
+	// request status data on them. 
 
-	// We need to combine these two data structures into one
+	var idsToRequest = [];
 	for (id in steamFriends) {
+		idsToRequest.push(id);
 		makeFlDataEntry(id);
 	};
+	SteamFriends.requestFriendData(idsToRequest);
 	updateFriendsTab();
 };
 
