@@ -2,7 +2,7 @@
 	"name": "dchat",
 	"version": "0.0.1",
 	"dependencies": {
-		"dota2": "*",
+		"dota2": "rjacksonm1/node-dota2#1.0.0-dev",
 		"blessed": "*",
 		"steam": "*"
 	},
