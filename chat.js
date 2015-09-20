@@ -399,7 +399,7 @@ var onSteamRelationships = function onSteamRelationships() {
 var makeFlDataEntry = function makeFlDataEntry(id) {
 	var flObj = {};
 	flData[id] = flObj;
-	flObj['friendStatus'] = steamFriends[id];
+	flObj.friendStatus = steamFriends[id];
 	var userObj = steamUsers[id];
 	for (prop in userObj) {
 		flObj[prop] = userObj[prop];
@@ -438,7 +438,13 @@ var onSteamUser = function onSteamUser(newUserData) {
 	if (id == ownSteamId) {
 		updateOwnName(newUserData.player_name);
 	};
-	steamUsers[id] = newUserData;
+	if (id in steamUsers) {
+		for (prop in newUserData) {
+			steamUsers[id][prop] = newUserData[prop];
+		};
+	} else {
+		steamUsers[id] = newUserData;
+	};
 	makeFlDataEntry(id);
 	updateFriendsTab();
 };
@@ -563,7 +569,7 @@ var onSteamLogOn = function onSteamLogOn(logonResp){
 			SteamFriends.setPersonaName(steamcreds.steam_name);
 		};
 		writeSystemMsg('Logged on to Steam');
-		SteamFriends.on('relationships', function() { setTimeout(onSteamRelationships, 4000)});
+		SteamFriends.on('relationships', onSteamRelationships);
 		SteamFriends.on('friend', onSteamFriend);
 		SteamFriends.on('personaState', onSteamUser);
 		SteamFriends.on('friendMsg', onSteamMsg);
@@ -596,6 +602,7 @@ sc.on('connected', function() {
 });
 sc.on('logOnResponse', onSteamLogOn);
 var onSteamError = function() {
+	writeSystemMsg('Disconnected from Steam. Use /connect to reconnect. ');
 	sc.disconnect();
 	// TODO
 };

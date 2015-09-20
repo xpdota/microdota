@@ -433,7 +433,7 @@ friendsTab.prototype.updateFriendsList = function() {
 		var flObj = new friendEntry(id, this.flData[id]);
 		unsorted.push(flObj);
 	};
-	var numPasses = 7;
+	var numPasses = 8;
 	for (pass = -1; pass < numPasses; pass++){
 		for (i = 0; i < unsorted.length; i++) {
 			var flObj = unsorted[i];
@@ -549,10 +549,10 @@ friendEntry.prototype.getSortPos = function() {
 		return -1;
 	// Blocked
 	if (this.friendStatus == 1)
-		return 6;
+		return 7;
 	// Outgoing friend request
 	if (this.friendStatus == 4)
-		return 5;
+		return 6;
 	// Incoming friend request
 	if (this.friendStatus == 2)
 		return 1;
@@ -563,20 +563,23 @@ friendEntry.prototype.getSortPos = function() {
 	if (this.gameName)
 		return 2;
 	// Online
-	if (this.onlineStatus > 1)
+	if (this.onlineStatus >= 1)
 		return 3;
 	// Offline
 	if (this.onlineStatus == 0)
 		return 4;
+	if (this.onlineStatus == undefined)
+		return 5;
 	// Anything we missed
-	return 4;
+	return 5;
 };
 friendEntry.prototype.toMenuString = function() {
 	var out = '';
 	out += this.name;
 	var statusCode = this.onlineStatus;
 	// Only display status if it's something other than "online"
-	var needStatus = (statusCode != 1 && statusCode != undefined);
+	var needStatus = (statusCode !=1 && statusCode != undefined );
+	var unknownStatus = (statusCode == undefined);
 	var auxParts = [];
 	if (this.isYou) {
 		auxParts.push('You')
@@ -586,6 +589,9 @@ friendEntry.prototype.toMenuString = function() {
 	};
 	if (needStatus) {
 		auxParts.push(this.statusText);
+	};
+	if (unknownStatus) {
+		auxParts.push('Unknown/Offline');
 	};
 	/*if (this.rpText) {
 		auxParts.push(this.rpText);
@@ -618,6 +624,9 @@ friendEntry.prototype.toMenuString = function() {
 	} else if (statusCode > 0) {
 		openTag = '{blue-fg}';
 		closeTag = '{/blue-fg}';
+	} else {
+		openTag = '{white-fg}';
+		closeTag = '{/white-fg}';
 	};
 	return openTag + out + closeTag;
 };
