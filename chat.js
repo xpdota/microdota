@@ -13,6 +13,9 @@
 		Might be hard, while an emote is just a U+E0xx glyph, simply
 		sending that doesn't seem to work, but that's probably because I 
 		don't have any emotes on the test account. 
+	Friends list scrolling
+		I'll probably do something like the scrolloff option in vim so
+		that we don't need separate scrolling and selection keys. 
 */
 
 
@@ -20,45 +23,44 @@
 var Steam = require('steam');
 var util = require('util');
 var fs = require('fs');
-
 var Dota2 = require('dota2');
 var steamcreds = require('./steamcreds.js');
 var sc = new Steam.SteamClient();
+var SteamUser = new Steam.SteamUser(sc);
+var SteamFriends = new Steam.SteamFriends(sc);
 var dota = new Dota2.Dota2Client(sc, true);
+// Disable debugging output from these modules
+sc.debug = false;
+dota.debug = false;
+
+// Load our own extra stuff
 var config = require('./config');
-var richPresence = require('./richPresence');
-var rpToText = richPresence.rpToText;
+//var richPresence = require('./richPresence');
+//var rpToText = richPresence.rpToText;
 var steamFuncs = require('./steamFuncs');
-
-// Pull stuff from config files
-var chatChannels = config.channels;
-var defaultTab = config.defaultChan;
-// Trying to support not changing your name
-var ownName = '';
-var ownSteamId = '';
-var cmdLeader = config.cmdLeader;
-
-// These can be used by whatever to see if 
-// the process of logging on and joining channels is done. 
-var dotaIsReady = false;
-var joinedChannels = false;
-
-// Steam friends and players stuff
-var steamFriends = {};
-var steamUsers = {};
-var flData = {};
-
 // Load our own classes from classes.js
 var classes = require('./classes');
 var chatTab = classes.chatTab;
 var tabMan = classes.tabMan;
 var friendsTabClass = classes.friendsTab;
+
+// Pull stuff from config files
+var chatChannels = config.channels;
+var defaultTab = config.defaultChan;
+var cmdLeader = config.cmdLeader;
+
+// State variables
+
+var ownName = '';
+var ownSteamId = '';
+var dotaIsReady = false;
+var joinedChannels = false;
+// steamFriends and steamUsers are straight from node-steam
+// flData is a combined version of those two. 
+var steamFriends = {};
+var steamUsers = {};
+var flData = {};
 			
-// Disable debugging output from these modules
-sc.debug = false;
-dota.debug = false;
-
-
 // Dota connection is ready
 var onDotaReady = function onDotaReady() {
 	dotaIsReady = true;
@@ -142,7 +144,7 @@ screen.render();
 
 // What happens when you press enter
 textEntryBox.on('submit', function(data) {
-	// This is how the lgoic works for this:
+	// This is how the logic works for this:
 	// 1. Parse it (see if it's a command, if so, which?)
 	// 2. If the chat box accepts input, send it there
 	//		At this point, the chat box itself can modify 
@@ -164,6 +166,7 @@ textEntryBox.on('submit', function(data) {
 	if (!isCmd) {
 		var message = data;
 	};
+	// Assemble data to be passed to chatBox.sendInput or processCmd
 	var entryObj = {
 		raw: data,
 		isCmd: isCmd,
@@ -236,6 +239,7 @@ var writeSystemMsg = function writeSystemMsg(text) {
 	mainTabBar.updateBar();
 	updateDividerBar();
 };
+// Exposed globally for debugging purposes
 global.writeSystemMsg = writeSystemMsg;
 
 // Ctrl-X help message
@@ -246,7 +250,7 @@ var printHelpMessage = function printHelpMessage() {
 	mainTabBar.activeTab.append(helpText);
 };
 
-// Process a command. 
+// Process a command which has not been handled by the tab itself. 
 // Command leader is already stripped
 var processCmd = function processCmd(fullCmd) {
 	var argv = fullCmd.split(' ');
@@ -269,19 +273,21 @@ var echoCmd = function echoCmd(fullCmd, argv) {
 // Join a channel on the fly
 // Does not permanently join the channel
 var joinCmd = function joinCmd(fullCmd, argv) {
-	// Channel name might have spaces and stuff, so just
-	// strip off the 'join ' part of the command to  get
-	// the channel name. 
+	// Easier to do this than reassembling the channel name from argv if it has spaces
 	var chanName = fullCmd.slice(5);
 	joinChannel(chanName);
 };
 
+// Command to request someone's profile. 
+// Doesn't do much with it right now, just dumbs it to a json file. Also this is the 
+// source 1 profile, not the source 2 one. 
 var profileCmd = function profileCmd(fullCmd, argv) {
 	var playerId = parseInt(argv[1])
 	dota.requestProfile(playerId);
 	writeSystemMsg('Requesting profile for ' + playerId);
 };
 
+// Command for entering your steam guard
 var steamGuardCmd = function steamGuardCmd(fullCmd, argv) {
 	var sgCode = argv[1];
 	steamFuncs.setSteamGuardCode(sgCode);
@@ -289,6 +295,7 @@ var steamGuardCmd = function steamGuardCmd(fullCmd, argv) {
 	writeSystemMsg('Now use /connect to try connecting again. ');
 };
 
+// (Re)connect command. 
 var connectCmd = function connectCmd(fullCmd, argv) {
 	writeSystemMsg('(Re)connecting Steam...');
 	sc.connect();
@@ -385,17 +392,18 @@ var onSteamRelationships = function onSteamRelationships() {
 	var numUsers = Object.keys(steamFriends).length;
 	// We need to combine these two data structures into one, and also
 	// request status data on them. 
-
 	var idsToRequest = [];
 	for (id in steamFriends) {
 		idsToRequest.push(id);
 		makeFlDataEntry(id);
 	};
+	// This tells steam to give us data on a list of IDs. 
 	SteamFriends.requestFriendData(idsToRequest);
 	updateFriendsTab();
 };
 
 // Copy all props so we have a more independent copy of the data
+// The end result is a steam user object with a 'friendStatus' property. 
 var makeFlDataEntry = function makeFlDataEntry(id) {
 	var flObj = {};
 	flData[id] = flObj;
@@ -409,25 +417,22 @@ var makeFlDataEntry = function makeFlDataEntry(id) {
 	};
 };
 
+// Look up user data. Try flData first, then steamUsers. 
 var getUserData = function getUserData(id) {
 	if (id in flData) {
 		return flData[id];
 	} else if (id in steamUsers) {
 		return steamUsers[id];
 	};
-	// I wonder if there's a way to get data for an arbitrary person
-	// for when we don't have it in steam.users. 
 	return {};
 };
 
-// The 'friend' event is when the state of one friend has
-// changed. 
+// The 'friend' event is when the state of one friend has changed
 var onSteamFriend = function onSteamFriend(friend, relation) {
 	steamFriends[friend] = relation;
 	writeSystemMsg('New relation for friend ' + friend + ': ' + relation);
 	makeFlDataEntry(friend);
 	updateFriendsTab();
-	
 };
 
 // Called when we receive a 'user' event which tells us
@@ -460,11 +465,11 @@ var determineOwnName = function determineOwnName() {
 	};
 };
 
+// Ctrl-Q does this
 var dumpData = function dumpData() {
 	writeSystemMsg('Friends: ' + JSON.stringify(steamFriends));
 	writeSystemMsg('Users: ' + JSON.stringify(steamUsers));
 	writeSystemMsg('Joined: ' + JSON.stringify(flData));
-	//writeSystemMsg(JSON.stringify(
 };
 
 // Update friends list content
@@ -509,8 +514,9 @@ var createOrSwitchMsgTab = function createOrSwitchMsgTab(id) {
 	};
 };
 	
+// Receiving a steam message
 var onSteamMsg = function onSteamMsg(id, message, type) {
-	// Only react if it's a chat message
+	// Only react if it's an actual chat message
 	if (type != 1) return;
 	var result = findMsgTab(id);
 	var tab;
@@ -528,7 +534,7 @@ var onSteamMsg = function onSteamMsg(id, message, type) {
 var friendsTab = new friendsTabClass(screen, flData, createOrSwitchMsgTab);
 mainTabBar.addTab(friendsTab);
 
-var onSteamRP = function onSteamRP(id, text, extra1, extra2) {
+/*var onSteamRP = function onSteamRP(id, text, extra1, extra2) {
 	extra1 = extra1 || '';
 	extra2 = extra2 || '';
 	rpObj = {};
@@ -540,7 +546,7 @@ var onSteamRP = function onSteamRP(id, text, extra1, extra2) {
 	userObj.rpObj = rpObj;
 	userObj.rpString = rpToText(rpObj);
 	updateFriendsTab();
-};
+};*/
 
 var onDotaProfile = function onDotaProfile(id, profileData) {
 	var profileString = JSON.stringify(profileData);
@@ -553,8 +559,6 @@ var onDotaProfile = function onDotaProfile(id, profileData) {
 //var sentry = fs.readFileSync('sentry');
 //if (sentry.length) logOnDetails.shaSentryfile = sentry;
 writeSystemMsg('Logging on to Steam...');
-var SteamUser = new Steam.SteamUser(sc);
-var SteamFriends = new Steam.SteamFriends(sc);
 
 
 // Callback when the steam connection is ready
@@ -575,6 +579,11 @@ var onSteamLogOn = function onSteamLogOn(logonResp){
 		SteamFriends.on('friendMsg', onSteamMsg);
 		//sc.on('richPresence', onSteamRP);
 		// Start node-dota2
+		// Exit first to makes sure we don't run into weird reconnection issues
+		try {
+			dota.exit();
+		} catch (e) {
+		};
 		dota.launch();
 		dota.on('ready', onDotaReady);
 		dota.on('unready', onDotaUnready);
