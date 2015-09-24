@@ -1,21 +1,43 @@
+/*
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 /* Todo list:
-	Support marking messages that are scrolled out of view as unread
-	This will also require an active+unread tab stats (maybe black fg red bg)
-	Temp hack:
-		Added a "scroll down for more messages" banner across the divier
-		This has a bug in that it doesn't seem to work on the system tab. 
+
+Todo:
+	Added a "scroll down for more messages" banner across the divider,
+		but it doesn't seem to work right on the system tab. 
+	Friends list scrolling
+		I'll probably do something like the scrolloff option in vim so
+		that we don't need separate scrolling and selection keys. 
+
+
+On hold:
 	Profiles
-		In progress
+		On hold - need node-dota2 to support reborn profiles, otherwise
+		it's pretty useless. I'll probably combine the data available
+		on the old profile and new profile into one superprofile. 
 	Make it not mess up when resized
+		Blessed doesn't seem to be recognizing the screen resize event. 
 	OS X terminal scrolling
 		Apparently, it sends ^[OA and ^[OB for mousewheel up/down
+		I don't know how to get blessed to recognize these. 
 	Emotes
 		Might be hard, while an emote is just a U+E0xx glyph, simply
 		sending that doesn't seem to work, but that's probably because I 
 		don't have any emotes on the test account. 
-	Friends list scrolling
-		I'll probably do something like the scrolloff option in vim so
-		that we don't need separate scrolling and selection keys. 
+		I don't know if there's a list of emotes to codepoints somewhere. 
 */
 
 
