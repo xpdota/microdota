@@ -21,6 +21,7 @@ Todo:
 	Friends list scrolling
 		I'll probably do something like the scrolloff option in vim so
 		that we don't need separate scrolling and selection keys. 
+	Properly parse /flip responses. 
 
 
 On hold:
@@ -101,21 +102,31 @@ var joinDefaultChannels = function joinDefaultChannels() {
 	for (var i = 0; i < chatChannels.length; i++) {
 		joinChannel(chatChannels[i]);
 	};
+	for (var i = 0; i < config.regchannels.length; i++) {
+		joinChannel(
+			config.regchannels[i], 
+			Dota2.DOTAChatChannelType_t.DOTAChannelType_Regional
+		);
+	};
 	mainTabBar.switchToNum(defaultTab);
 	joinedChannels = true;
 };
 
 // Join the named channel and do all the necessary stuff
 // to allow the user to chat. 
-var joinChannel = function joinChannel(chanName) {
-	dota.joinChat(chanName);
+var joinChannel = function joinChannel(chanName, type) {
+	//dota.leaveChat(chanName);
+	dota.joinChat(chanName, type);
 	writeSystemMsg('Joining channel ' + chanName);
-	var sendFunc = function sendFunc(msg) {
-		this.addMsg(ownName, msg, true);
-		sendDotaMessage(chanName, msg);
+	var result = findChatTab(chanName, false).found;
+	if (!result) {
+		var sendFunc = function sendFunc(msg) {
+			this.addMsg(ownName, msg, true);
+			sendDotaMessage(chanName, msg);
+		};
+		var newChatTab = new chatTab(screen, chanName, chanName, sendFunc);
+		mainTabBar.addTab(newChatTab);
 	};
-	var newChatTab = new chatTab(screen, chanName, chanName, sendFunc);
-	mainTabBar.addTab(newChatTab);
 };
 
 var onDotaChatMessage = function onDotaChatMessage(channel, personaName, message, chatObj){
@@ -296,8 +307,13 @@ var echoCmd = function echoCmd(fullCmd, argv) {
 // Does not permanently join the channel
 var joinCmd = function joinCmd(fullCmd, argv) {
 	// Easier to do this than reassembling the channel name from argv if it has spaces
-	var chanName = fullCmd.slice(5);
-	joinChannel(chanName);
+	if (argv[0] == 'join') {
+		var chanName = fullCmd.slice(5);
+		joinChannel(chanName);
+	} else if (argv[0] == 'joinreg') {
+		var chanName = fullCmd.slice(8);
+		joinChannel(chanName, Dota2.DOTAChatChannelType_t.DOTAChannelType_Regional);
+	};
 };
 
 // Command to request someone's profile. 
@@ -338,6 +354,7 @@ var closeCmd = function closeCmd(fullCmd, argv) {
 var cmdMap = {
 	echo: echoCmd,
 	join: joinCmd,
+	joinreg: joinCmd,
 	profile: profileCmd,
 	sg: steamGuardCmd,
 	connect: connectCmd,
@@ -512,14 +529,15 @@ var createSteamMsgTab = function createSteamMsgTab(id) {
 
 // Check if a tab for a particular steam ID exists
 // If switchTo is true, then switch to it. 
-var findMsgTab = function findMsgTab(id, switchTo) {
-	var idString = 'Steam:' + id;
+var findChatTab = function findChatTab(chanString, switchTo) {
+	//var chanString = 'Steam:' + id;
 	switchTo = switchTo | false;
 	for (i = 0; i < mainTabBar.numTabs; i++) {
 		var tab = mainTabBar.tabs[i];
-		if (tab.channel == idString) {
+		if (tab.channel == chanString) {
 			if (switchTo)
 				mainTabBar.switchToNum(i);
+			writeSystemMsg('Found tab ' + chanString);
 			return {found: true, tab: tab};
 		};
 	};
@@ -529,10 +547,10 @@ var findMsgTab = function findMsgTab(id, switchTo) {
 // Create a tab for messaging if it doesn't exist. 
 // Switch to it. 
 var createOrSwitchMsgTab = function createOrSwitchMsgTab(id) {
-	var found = findMsgTab(id, true).found;
+	var found = findChatTab('Steam:' + id, true).found;
 	if (!found) {
 		createSteamMsgTab(id);
-		findMsgTab(id, true);
+		findChatTab('Steam:' + id, true);
 	};
 };
 	
@@ -540,7 +558,7 @@ var createOrSwitchMsgTab = function createOrSwitchMsgTab(id) {
 var onSteamMsg = function onSteamMsg(id, message, type) {
 	// Only react if it's an actual chat message
 	if (type != 1) return;
-	var result = findMsgTab(id);
+	var result = findChatTab('Steam:' + id);
 	var tab;
 	if (result.found) {
 		// Do stuff
@@ -582,6 +600,15 @@ var onDotaProfile = function onDotaProfile(id, profileData) {
 //if (sentry.length) logOnDetails.shaSentryfile = sentry;
 writeSystemMsg('Logging on to Steam...');
 
+writeSystemMsg('Logged on to Steam');
+SteamFriends.on('relationships', onSteamRelationships);
+SteamFriends.on('friend', onSteamFriend);
+SteamFriends.on('personaState', onSteamUser);
+SteamFriends.on('friendMsg', onSteamMsg);
+dota.on('ready', onDotaReady);
+dota.on('unready', onDotaUnready);
+dota.on('chatMessage', onDotaChatMessage);
+dota.on('profileData', onDotaProfile);
 
 // Callback when the steam connection is ready
 var onSteamLogOn = function onSteamLogOn(logonResp){
@@ -594,11 +621,6 @@ var onSteamLogOn = function onSteamLogOn(logonResp){
 		if (steamcreds.steam_name) {
 			SteamFriends.setPersonaName(steamcreds.steam_name);
 		};
-		writeSystemMsg('Logged on to Steam');
-		SteamFriends.on('relationships', onSteamRelationships);
-		SteamFriends.on('friend', onSteamFriend);
-		SteamFriends.on('personaState', onSteamUser);
-		SteamFriends.on('friendMsg', onSteamMsg);
 		//sc.on('richPresence', onSteamRP);
 		// Start node-dota2
 		// Exit first to makes sure we don't run into weird reconnection issues
@@ -607,10 +629,7 @@ var onSteamLogOn = function onSteamLogOn(logonResp){
 		} catch (e) {
 		};
 		dota.launch();
-		dota.on('ready', onDotaReady);
-		dota.on('unready', onDotaUnready);
-		dota.on('chatMessage', onDotaChatMessage);
-		dota.on('profileData', onDotaProfile);
+		//joinedChannels = false;
 	} else if (logonResp.eresult == 63) {
 		sc.disconnect();
 		var emailDomain = logonResp.email_domain;
