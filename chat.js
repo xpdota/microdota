@@ -537,7 +537,6 @@ var findChatTab = function findChatTab(chanString, switchTo) {
 		if (tab.channel == chanString) {
 			if (switchTo)
 				mainTabBar.switchToNum(i);
-			writeSystemMsg('Found tab ' + chanString);
 			return {found: true, tab: tab};
 		};
 	};
@@ -590,10 +589,9 @@ mainTabBar.addTab(friendsTab);
 
 var onDotaProfile = function onDotaProfile(id, profileData) {
 	var profileString = JSON.stringify(profileData);
-	writeSystemMsg('Profile ' + id + ' written to file');
 	var fileName = 'p' + id + '.json';
+	writeSystemMsg('Profile ' + id + ' written to ' + fileName);
 	fs.writeFile(fileName, profileString);
-	//writeSystemMsg('Profile ' + id + ': ' + JSON.stringify(profileData));
 };
 //if (steamcreds.steam_guard_code) logOnDetails.authCode = steamcreds.steam_guard_code;
 //var sentry = fs.readFileSync('sentry');
