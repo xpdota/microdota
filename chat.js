@@ -104,8 +104,9 @@ var joinDefaultChannels = function joinDefaultChannels() {
 	};
 	for (var i = 0; i < config.regchannels.length; i++) {
 		joinChannel(
-			config.regchannels[i], 
-			Dota2.DOTAChatChannelType_t.DOTAChannelType_Regional
+			config.regchannels[i] 
+			//It appears chat channel types were removed
+			//Dota2.DOTAChatChannelType_t.DOTAChannelType_Regional
 		);
 	};
 	mainTabBar.switchToNum(defaultTab);
@@ -312,7 +313,9 @@ var joinCmd = function joinCmd(fullCmd, argv) {
 		joinChannel(chanName);
 	} else if (argv[0] == 'joinreg') {
 		var chanName = fullCmd.slice(8);
-		joinChannel(chanName, Dota2.DOTAChatChannelType_t.DOTAChannelType_Regional);
+		// It appears the chat channel types were removed
+		joinChannel(chanName);
+		//joinChannel(chanName, Dota2.DOTAChatChannelType_t.DOTAChannelType_Regional);
 	};
 };
 
